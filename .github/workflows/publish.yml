@@ -23,26 +23,16 @@ jobs:
         shell: bash -euo pipefail {0}
         run: pnpm install --frozen-lockfile
 
-      - name: "[Publish] | Build bundle + draft release"
+      - name: "[Publish] | Build bundle + publish release"
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "slowed-and-reverb ${{ github.ref_name }}"
-          releaseDraft: true
-
-      # The curl|sh installer fetches this; curl skips quarantine so the app opens clean.
-      - name: "[Publish] | Attach .app tarball for curl installer"
-        shell: bash -euo pipefail {0}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          app="$(find src-tauri/target -path '*/bundle/macos/*.app' | head -n1)"
-          test -n "$app" || { echo "::error::no .app found under src-tauri/target"; exit 1; }
-          tar -C "$(dirname "$app")" -czf slowed-and-reverb.app.tar.gz "$(basename "$app")"
-          gh release upload "$TAG" slowed-and-reverb.app.tar.gz --repo "$GITHUB_REPOSITORY" --clobber
+          # Published, not draft: the curl installer's latest/download URL and the
+          # Homebrew cask only resolve against a published, non-prerelease release.
+          releaseDraft: false
 
       # Cross-repo push to truehhart/homebrew-tap; GITHUB_TOKEN can't reach it.
       - name: "[Setup] | Mint Homebrew tap token"
@@ -57,7 +47,6 @@ jobs:
       - name: "[Publish] | Generate and push Homebrew cask"
         shell: bash -euo pipefail {0}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
           TAG: ${{ github.ref_name }}
         run: |
@@ -65,10 +54,8 @@ jobs:
           dmg="$(find src-tauri/target -path '*/bundle/dmg/*.dmg' | head -n1)"
           test -n "$dmg" || { echo "::error::no .dmg found under src-tauri/target"; exit 1; }
           sha="$(shasum -a 256 "$dmg" | cut -d' ' -f1)"
-          # Exact browser download URL of the asset tauri-action uploaded (handles space-encoding).
-          dmg_url="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --json assets -q '.assets[] | select(.name | endswith(".dmg")) | .url')"
-          test -n "$dmg_url" || { echo "::error::no .dmg asset on release $TAG"; exit 1; }
+          # Deterministic tagged asset URL — the .dmg name has no spaces, so no encoding needed.
+          dmg_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/$(basename "$dmg")"
 
           git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/truehhart/homebrew-tap.git" tap
           mkdir -p tap/Casks

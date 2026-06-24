@@ -9,7 +9,8 @@ set -eu
 
 app="Slowed and Reverb.app"
 dest="/Applications"
-url="https://github.com/truehhart/slowed-and-reverb/releases/latest/download/slowed-and-reverb.app.tar.gz"
+# tauri-action's .app tarball; name has no version so latest/download stays stable.
+url="https://github.com/truehhart/slowed-and-reverb/releases/latest/download/Slowed.and.Reverb_aarch64.app.tar.gz"
 
 [ "$(uname -m)" = "arm64" ] || { echo "Apple Silicon (arm64) only." >&2; exit 1; }
 

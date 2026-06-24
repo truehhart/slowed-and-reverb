@@ -40,7 +40,9 @@ macOS on Apple Silicon (arm64) only.
 **Homebrew** (recommended):
 
 ```sh
-brew install --cask truehhart/tap/slowed-and-reverb
+brew tap truehhart/tap
+brew trust truehhart/tap
+brew install --cask slowed-and-reverb
 ```
 
 **One-line install** (no Homebrew):
