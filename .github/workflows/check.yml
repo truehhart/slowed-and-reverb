@@ -1,0 +1,37 @@
+name: check
+run-name: check ${{ github.ref_name }}
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_call:
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - name: "[Setup] | Checkout"
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: "[Setup] | Mise"
+        uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+
+      - name: "[Setup] | Install JS deps"
+        shell: bash -euo pipefail {0}
+        run: pnpm install --frozen-lockfile
+
+      - name: "[Check] | Type-check + rust fmt/clippy"
+        shell: bash -euo pipefail {0}
+        run: mise run check
+
+      # WebKit, not chromium: the app ships in WKWebView, so design tests run on
+      # the engine we actually deploy to (catches WebKit-only layout bugs).
+      - name: "[Setup] | Playwright webkit"
+        shell: bash -euo pipefail {0}
+        run: pnpm exec playwright install webkit
+
+      - name: "[Test] | Unit + web design tests"
+        shell: bash -euo pipefail {0}
+        run: mise run test

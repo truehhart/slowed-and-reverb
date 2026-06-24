@@ -1,0 +1,28 @@
+[package]
+name = "slowed-and-reverb"
+version = "0.1.0"
+description = "Play YouTube audio slowed and reverbed"
+authors = ["Dmitrii Parshenkov <d.parshenkov@truehhart.com>"]
+edition = "2021"
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name (a Windows quirk:
+# https://github.com/rust-lang/cargo/issues/8519).
+name = "slowed_and_reverb_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset", "macos-private-api"] }
+tauri-plugin-log = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# OS media controls (macOS MPRemoteCommandCenter / Now Playing) — hardware media
+# keys without the Accessibility permission a global event tap would require.
+souvlaki = "0.8"
+# Direct cover-art fetch (Rust owns the network; the webview has none). Tiny
+# blocking HTTP client — no async runtime, no heavy transitive tree.
+ureq = "2"

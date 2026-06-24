@@ -1,0 +1,25 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=2048] # icon.icns is a ~1.6MB Tauri bundle asset
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: detect-private-key
+      - id: check-yaml
+      - id: check-json
+        exclude: ^tsconfig\.json$
+      - id: check-toml
+
+  - repo: local
+    hooks:
+      - id: mise-check
+        name: mise check (tsc + cargo fmt + clippy)
+        entry: mise run check
+        language: system
+        pass_filenames: false
+        always_run: true

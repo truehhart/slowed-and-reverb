@@ -1,0 +1,71 @@
+name: release
+run-name: release v${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, without the leading v (e.g. 0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: "[Setup] | Checkout"
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: "[Validate] | Version format"
+        shell: bash -euo pipefail {0}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'$VERSION' is not semver MAJOR.MINOR.PATCH (no leading v)"
+            exit 1
+          fi
+
+      # The .dmg filename and in-app version come from tauri.conf.json, so the tag must match it.
+      - name: "[Validate] | Version matches tauri.conf.json"
+        shell: bash -euo pipefail {0}
+        run: |
+          conf="$(jq -r .version src-tauri/tauri.conf.json)"
+          if [[ "$conf" != "$VERSION" ]]; then
+            echo "::error::tauri.conf.json version ($conf) != requested ($VERSION); bump it first"
+            exit 1
+          fi
+
+  check:
+    needs: validate
+    uses: ./.github/workflows/check.yml
+    permissions:
+      contents: read
+
+  tag:
+    needs: check
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      # App token, not GITHUB_TOKEN — a GITHUB_TOKEN push won't trigger publish.yml.
+      - name: "[Setup] | Mint release token"
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: "[Setup] | Checkout"
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          token: ${{ steps.token.outputs.token }}
+
+      - name: "[Release] | Create and push tag"
+        shell: bash -euo pipefail {0}
+        run: |
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
