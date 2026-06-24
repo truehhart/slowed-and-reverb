@@ -1,6 +1,6 @@
 [package]
 name = "slowed-and-reverb"
-version = "0.1.0"
+version = "0.1.1"
 description = "Play YouTube audio slowed and reverbed"
 authors = ["Dmitrii Parshenkov <d.parshenkov@truehhart.com>"]
 edition = "2021"
@@ -27,3 +27,7 @@ souvlaki = "0.8"
 # Direct cover-art fetch (Rust owns the network; the webview has none). Tiny
 # blocking HTTP client — no async runtime, no heavy transitive tree.
 ureq = "2"
+tauri-plugin-process = "2"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"

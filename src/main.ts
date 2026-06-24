@@ -1,5 +1,8 @@
 import "./log"; // install console→logfile mirror before anything logs
-import { invoke, listen, appWindow } from "./tauri";
+import { getVersion } from "@tauri-apps/api/app";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { invoke, listen, appWindow, isTauri } from "./tauri";
 import * as audio from "./audio";
 import * as player from "./player";
 import { clamp, fmt, fmtCounter, angleFromValue, pctToUnit } from "./ui-math";
@@ -40,6 +43,7 @@ const statusEl = el<HTMLSpanElement>("status");
 const winCloseBtn = el<HTMLButtonElement>("win-close");
 const winMinBtn = el<HTMLButtonElement>("win-min");
 const winZoomBtn = el<HTMLButtonElement>("win-zoom");
+const versionEl = document.querySelector<HTMLSpanElement>(".plate__model");
 
 // Queried (not id-guarded): pure feedback decoration.
 const vuTracks = Array.from(
@@ -68,6 +72,63 @@ function flashStatus(msg: string): void {
     if (statusEl.textContent === msg) setStatus("");
   }, 4000);
 }
+
+async function showAppVersion(): Promise<void> {
+  if (!versionEl || !isTauri()) return;
+
+  try {
+    versionEl.textContent = `v${await getVersion()}`;
+  } catch (e) {
+    console.debug("app version lookup failed", e);
+  }
+}
+
+void showAppVersion();
+
+async function checkForAppUpdate(): Promise<void> {
+  if (!isTauri()) return;
+
+  try {
+    const update = await check();
+    if (!update) return;
+
+    const shouldInstall = window.confirm(
+      `Install Slowed and Reverb ${update.version} now?`,
+    );
+    if (!shouldInstall) {
+      flashStatus(`update ${update.version} available`);
+      return;
+    }
+
+    let downloaded = 0;
+    let contentLength: number | undefined;
+    setStatus(`updating to ${update.version}`);
+    await update.downloadAndInstall((event) => {
+      switch (event.event) {
+        case "Started":
+          contentLength = event.data.contentLength;
+          downloaded = 0;
+          break;
+        case "Progress":
+          downloaded += event.data.chunkLength;
+          if (contentLength) {
+            setStatus(
+              `updating ${Math.round((downloaded / contentLength) * 100)}%`,
+            );
+          }
+          break;
+        case "Finished":
+          setStatus("update installed");
+          break;
+      }
+    });
+    await relaunch();
+  } catch (e) {
+    console.debug("update check failed", e);
+  }
+}
+
+void checkForAppUpdate();
 
 // Download indicator, independent of the player status: shows "downloading"
 // (with a live percent once yt-dlp reports one) whenever any track — the one

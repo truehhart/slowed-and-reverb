@@ -5,7 +5,7 @@ on:
   push:
     tags: ["v*"]
 
-# tauri-action drafts the release; the cask push happens cross-repo via an App token.
+# tauri-action publishes the release; the cask push happens cross-repo via an App token.
 permissions:
   contents: write
 
@@ -27,9 +27,11 @@ jobs:
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "slowed-and-reverb ${{ github.ref_name }}"
+          releaseName: ${{ github.ref_name }}
+          args: --config src-tauri/tauri.updater.conf.json
           # Published, not draft: the curl installer's latest/download URL and the
           # Homebrew cask only resolve against a published, non-prerelease release.
           releaseDraft: false

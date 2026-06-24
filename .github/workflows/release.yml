@@ -1,13 +1,8 @@
 name: release
-run-name: release v${{ inputs.version }}
+run-name: release ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: Version to release, without the leading v (e.g. 0.1.0)
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -15,27 +10,38 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    env:
-      VERSION: ${{ inputs.version }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: "[Setup] | Checkout"
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - name: "[Validate] | Version format"
+      - name: "[Validate] | Read Cargo version"
+        id: version
         shell: bash -euo pipefail {0}
         run: |
+          VERSION="$(cargo metadata --manifest-path src-tauri/Cargo.toml --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "slowed-and-reverb") | .version')"
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
-            echo "::error::'$VERSION' is not semver MAJOR.MINOR.PATCH (no leading v)"
+            echo "::error::Cargo version '$VERSION' is not semver MAJOR.MINOR.PATCH"
             exit 1
           fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 
-      # The .dmg filename and in-app version come from tauri.conf.json, so the tag must match it.
-      - name: "[Validate] | Version matches tauri.conf.json"
+      - name: "[Validate] | Tag and release do not exist"
         shell: bash -euo pipefail {0}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          conf="$(jq -r .version src-tauri/tauri.conf.json)"
-          if [[ "$conf" != "$VERSION" ]]; then
-            echo "::error::tauri.conf.json version ($conf) != requested ($VERSION); bump it first"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::tag ${TAG} already exists"
+            exit 1
+          fi
+          if gh release view "${TAG}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::release ${TAG} already exists"
             exit 1
           fi
 
@@ -46,10 +52,10 @@ jobs:
       contents: read
 
   tag:
-    needs: check
+    needs: [validate, check]
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ inputs.version }}
+      TAG: ${{ needs.validate.outputs.tag }}
     steps:
       # App token, not GITHUB_TOKEN — a GITHUB_TOKEN push won't trigger publish.yml.
       - name: "[Setup] | Mint release token"
@@ -67,5 +73,5 @@ jobs:
       - name: "[Release] | Create and push tag"
         shell: bash -euo pipefail {0}
         run: |
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
+          git tag "${TAG}"
+          git push origin "${TAG}"

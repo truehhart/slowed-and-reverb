@@ -29,16 +29,16 @@ We deliberately **do not embed the YouTube player**: a cross-origin iframe's aud
 
 ## Layout
 
-| Path                                  | Purpose                                                   |
-| ------------------------------------- | --------------------------------------------------------- |
-| `index.html`, `src/`                  | vanilla TS + Vite frontend                                |
-| `src/audio.ts`                        | Web Audio graph (speed + reverb) + impulse-response synth |
-| `src/player.ts`                       | queue / now-playing state, `invoke()` calls, auto-advance |
-| `src-tauri/src/ytdlp.rs`              | `resolve_tracks` + `download_audio` commands              |
-| `src-tauri/src/lib.rs`                | Tauri builder: plugins + command registration             |
-| `src-tauri/tauri.conf.json`           | window, asset-protocol scope, CSP, bundle                 |
-| `src-tauri/capabilities/default.json` | permission grants for the main window                     |
+| Path                            | Purpose                                                   |
+| ------------------------------- | --------------------------------------------------------- |
+| `index.html`, `src/`            | vanilla TS + Vite frontend                                |
+| `src/audio.ts`                  | Web Audio graph (speed + reverb) + impulse-response synth |
+| `src/player.ts`                 | queue / now-playing state, `invoke()` calls, auto-advance |
+| `src-tauri/src/ytdlp.rs`        | `resolve_tracks` + `download_audio` commands              |
+| `src-tauri/src/lib.rs`          | Tauri builder: plugins + command registration             |
+| `src-tauri/tauri.conf.json`     | window, asset-protocol scope, CSP, bundle                 |
+| `src-tauri/capabilities/*.json` | permission grants for the main window                     |
 
 ## Distribution
 
-Releases are cut by dispatching the **`release`** workflow with a version (no leading `v`): it validates the version against `tauri.conf.json`, runs `check`, and pushes the `v<version>` tag. That tag triggers **`publish`**, which builds via `tauri-apps/tauri-action` and attaches the `.app` **and** `.dmg` to a **draft** GitHub release, then pushes a Homebrew cask to `truehhart/homebrew-tap` (install via `brew install --cask truehhart/tap/slowed-and-reverb`). Builds are **arm64-only** (yt-dlp ships as an arch-specific resource) and **unsigned** (no Apple Developer cert yet) — the cask strips quarantine in `postflight`; a manual `.dmg`/`.app` install needs `xattr -dr com.apple.quarantine <app>` or right-click → Open. Signing/notarization (`APPLE_*` secrets feeding tauri-action) is a documented later add. The cross-repo tag and cask pushes use a GitHub App token (`RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY` secrets). See `.github/CLAUDE.md` for the GitHub Actions conventions.
+`src-tauri/Cargo.toml` is the single checked-in release version. Releases are cut by dispatching the **`release`** workflow; it reads the Cargo package version, fails if the `v<version>` tag or GitHub release already exists, runs `check`, and pushes the tag. That tag triggers **`publish`**, which builds via `tauri-apps/tauri-action` with `src-tauri/tauri.updater.conf.json` and attaches the `.app`, `.dmg`, signed updater archive/signature, and `latest.json` to a published GitHub release, then pushes a Homebrew cask to `truehhart/homebrew-tap` (install via `brew install --cask truehhart/tap/slowed-and-reverb`). Builds are **arm64-only** (yt-dlp ships as an arch-specific resource) and **unsigned** (no Apple Developer cert yet) — the cask strips quarantine in `postflight`; a manual `.dmg`/`.app` install needs `xattr -dr com.apple.quarantine <app>` or right-click → Open. Tauri updater signing uses `TAURI_SIGNING_PRIVATE_KEY`; do not rotate or lose it unless intentionally breaking updates for already-installed apps. Apple signing/notarization (`APPLE_*` secrets feeding tauri-action) is a documented later add. The cross-repo tag and cask pushes use a GitHub App token (`RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY` secrets). See `.github/CLAUDE.md` for the GitHub Actions conventions.

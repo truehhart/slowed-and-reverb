@@ -1,7 +1,6 @@
 {
   "name": "slowed-and-reverb",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +10,9 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-log": "^2"
+    "@tauri-apps/plugin-log": "^2",
+    "@tauri-apps/plugin-process": "~2.3.1",
+    "@tauri-apps/plugin-updater": "~2.10.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",
