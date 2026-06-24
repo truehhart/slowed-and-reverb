@@ -3,13 +3,37 @@ mod ytdlp;
 use souvlaki::{MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig};
 use std::collections::HashSet;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, Once};
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 
 // In-flight cover-art fetches, so rapid now-playing updates for the same track
 // don't spawn duplicate downloads.
 type InFlight = Mutex<HashSet<String>>;
+
+static PANIC_HOOK: Once = Once::new();
+
+fn install_panic_hook() {
+    PANIC_HOOK.call_once(|| {
+        let default_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            log::error!("slowed-and-reverb panic: {info}");
+            eprintln!("slowed-and-reverb panic: {info}");
+            default_hook(info);
+        }));
+    });
+}
+
+fn lock_or_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> MutexGuard<'a, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            log::error!("recovering poisoned {name} mutex");
+            eprintln!("recovering poisoned {name} mutex");
+            poisoned.into_inner()
+        }
+    }
+}
 
 // Percent-encode a filesystem path into a file:// URL. souvlaki feeds the cover
 // URL to NSURL(string:) on macOS, which returns nil — silently, no artwork — for
@@ -59,7 +83,7 @@ fn apply(
     position_sec: f64,
     playing: bool,
 ) {
-    let mut controls = controls.lock().unwrap();
+    let mut controls = lock_or_recover(controls, "media controls");
     let _ = controls.set_metadata(MediaMetadata {
         title: Some(title),
         cover_url: cover,
@@ -95,9 +119,7 @@ fn set_now_playing(
 ) {
     // No current track: hand the Now Playing session back cleanly.
     let Some(title) = title else {
-        let _ = controls
-            .lock()
-            .unwrap()
+        let _ = lock_or_recover(controls.inner(), "media controls")
             .set_playback(MediaPlayback::Stopped);
         return;
     };
@@ -118,12 +140,14 @@ fn set_now_playing(
     // Center updates the moment the art lands.
     if cover.is_none() {
         if let (Some(id), Some(url)) = (video_id, thumbnail_url) {
-            if !app.state::<InFlight>().lock().unwrap().insert(id.clone()) {
+            if !lock_or_recover(app.state::<InFlight>().inner(), "thumbnail fetches")
+                .insert(id.clone())
+            {
                 return;
             }
             tauri::async_runtime::spawn(async move {
                 let path = ytdlp::ensure_thumbnail(app.clone(), id.clone(), url).await;
-                app.state::<InFlight>().lock().unwrap().remove(&id);
+                lock_or_recover(app.state::<InFlight>().inner(), "thumbnail fetches").remove(&id);
                 if let Some(path) = path {
                     apply(
                         app.state::<Mutex<MediaControls>>().inner(),
@@ -147,7 +171,7 @@ fn update_position(
     position_sec: f64,
     playing: bool,
 ) {
-    let mut controls = controls.lock().unwrap();
+    let mut controls = lock_or_recover(controls.inner(), "media controls");
     let progress = progress(position_sec);
     let _ = controls.set_playback(if playing {
         MediaPlayback::Playing { progress }
@@ -158,6 +182,8 @@ fn update_position(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    install_panic_hook();
+
     tauri::Builder::default()
         // Opens external links (the GitHub link in the header) in the system
         // browser; the webview itself still gets no fs/http reach.
