@@ -1,6 +1,6 @@
 [package]
 name = "slowed-and-reverb"
-version = "0.1.1"
+version = "0.1.2"
 description = "Play YouTube audio slowed and reverbed"
 authors = ["Dmitrii Parshenkov <d.parshenkov@truehhart.com>"]
 edition = "2021"

@@ -113,7 +113,7 @@ async function checkForAppUpdate(): Promise<void> {
           break;
       }
     });
-    setStatus("update installed, restart to finish");
+    flashStatus("update installed, restart to finish");
   } catch (e) {
     console.debug("update check failed", e);
   }
