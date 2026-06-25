@@ -72,6 +72,11 @@ function flashStatus(msg: string): void {
   }, 4000);
 }
 
+function fmtDownloadBytes(bytes: number): string {
+  const mb = bytes / 1024 / 1024;
+  return mb >= 10 ? `${Math.round(mb)} MB` : `${mb.toFixed(1)} MB`;
+}
+
 async function showAppVersion(): Promise<void> {
   if (!versionEl || !isTauri()) return;
 
@@ -99,6 +104,7 @@ async function checkForAppUpdate(): Promise<void> {
         case "Started":
           contentLength = event.data.contentLength;
           downloaded = 0;
+          setStatus(`downloading update ${update.version}`);
           break;
         case "Progress":
           downloaded += event.data.chunkLength;
@@ -106,6 +112,8 @@ async function checkForAppUpdate(): Promise<void> {
             setStatus(
               `updating ${Math.round((downloaded / contentLength) * 100)}%`,
             );
+          } else {
+            setStatus(`updating ${fmtDownloadBytes(downloaded)}`);
           }
           break;
         case "Finished":
@@ -113,7 +121,7 @@ async function checkForAppUpdate(): Promise<void> {
           break;
       }
     });
-    flashStatus("update installed, restart to finish");
+    flashStatus("restart now to update");
   } catch (e) {
     console.debug("update check failed", e);
   }
