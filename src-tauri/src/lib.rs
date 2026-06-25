@@ -185,7 +185,6 @@ pub fn run() {
     install_panic_hook();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         // Opens external links (the GitHub link in the header) in the system
         // browser; the webview itself still gets no fs/http reach.

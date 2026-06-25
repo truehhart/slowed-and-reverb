@@ -1,7 +1,6 @@
 import "./log"; // install console→logfile mirror before anything logs
 import { getVersion } from "@tauri-apps/api/app";
 import { check } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { invoke, listen, appWindow, isTauri } from "./tauri";
 import * as audio from "./audio";
 import * as player from "./player";
@@ -92,17 +91,9 @@ async function checkForAppUpdate(): Promise<void> {
     const update = await check();
     if (!update) return;
 
-    const shouldInstall = window.confirm(
-      `Install Slowed and Reverb ${update.version} now?`,
-    );
-    if (!shouldInstall) {
-      flashStatus(`update ${update.version} available`);
-      return;
-    }
-
     let downloaded = 0;
     let contentLength: number | undefined;
-    setStatus(`updating to ${update.version}`);
+    setStatus(`downloading update ${update.version}`);
     await update.downloadAndInstall((event) => {
       switch (event.event) {
         case "Started":
@@ -118,11 +109,11 @@ async function checkForAppUpdate(): Promise<void> {
           }
           break;
         case "Finished":
-          setStatus("update installed");
+          setStatus("installing update");
           break;
       }
     });
-    await relaunch();
+    setStatus("update installed, restart to finish");
   } catch (e) {
     console.debug("update check failed", e);
   }
