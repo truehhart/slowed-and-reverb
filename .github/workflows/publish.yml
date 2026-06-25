@@ -45,6 +45,7 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           owner: truehhart
           repositories: homebrew-tap
+          permission-contents: write
 
       - name: "[Publish] | Generate and push Homebrew cask"
         shell: bash -euo pipefail {0}
