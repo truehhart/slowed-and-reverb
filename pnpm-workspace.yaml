@@ -1,4 +1,0 @@
-# pnpm 11 reads build-script approvals here, not from package.json.
-# vite needs esbuild's native binary, so allow its install script.
-allowBuilds:
-  esbuild: true

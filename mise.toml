@@ -1,71 +1,43 @@
+[settings]
+experimental = true # core swift backend
+
 [tools]
-rust = "stable"
-node = "26"
-pnpm = "11"
 yt-dlp = "latest"
 "aqua:nushell/nushell" = "latest"
+swift = "6.3.3"
 
 [tasks.dev]
-description = "Run the app in dev mode (vite + tauri, hot reload)"
-run = [
-  # ponytail: drop the release build (~1.6G) dev never uses; rebuilt on next `mise run build`
-  "cargo clean --release --manifest-path src-tauri/Cargo.toml",
-  "pnpm tauri dev",
-]
-
-[tasks."prepare:sidecars"]
-description = "Copy locally installed sidecars into Tauri's bundle input"
-run = "nu mise-tasks/prepare-sidecars.nu"
+description = "Run the app for fast iteration (swift run, unbundled)"
+run = "mise exec -- swift run"
 
 [tasks.build]
-description = "Build the production .app bundle"
-depends = ["prepare:sidecars"]
-run = "pnpm tauri build"
+description = "Assemble the release .app bundle (packaging/, Sparkle, yt-dlp)"
+run = "nu mise-tasks/bundle.nu release"
 
-[tasks."check:ts"]
-description = "Type-check the TypeScript frontend"
-run = "pnpm exec tsc --noEmit"
+[tasks."check:build"]
+description = "Compile the Swift package"
+run = "mise exec -- swift build"
 
-[tasks."check:rs"]
-description = "Check Rust formatting and lint"
-# tauri-build validates externalBin at compile time, so the sidecar must exist
-depends = ["prepare:sidecars"]
-run = [
-  "cargo fmt --manifest-path src-tauri/Cargo.toml --check",
-  "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
-]
+[tasks."check:fmt"]
+description = "Lint Swift formatting (swift-format, warnings are errors)"
+run = "mise exec -- swift format lint --strict --recursive Sources Tests"
 
-[tasks."check:dom"]
-description = "Assert every id main.ts needs via el() exists in index.html"
-run = "nu mise-tasks/check-dom.nu"
+[tasks."check:structure"]
+description = "Enforce one non-private top-level type per Swift file (named after the file)"
+run = "nu mise-tasks/check-file-structure.nu"
 
 [tasks.check]
-description = "Everything the pre-commit hook runs (dom + type-check + rust fmt/clippy)"
-depends = ["check:dom", "check:ts", "check:rs"]
-
-[tasks."check:unit"]
-description = "Vitest unit tests for src/ui-math.ts"
-run = "pnpm exec vitest run"
-
-[tasks."check:web"]
-description = "Playwright design tests against the Vite page (hash harness)"
-run = "pnpm exec playwright test"
-
-[tasks."check:rs-test"]
-description = "Rust unit tests"
-run = "cargo test --manifest-path src-tauri/Cargo.toml"
+description = "Everything the pre-commit hook runs (swift build + format lint + file structure)"
+depends = ["check:build", "check:fmt", "check:structure"]
 
 [tasks.test]
-description = "Full test suite — unit (Vitest) + Rust + web (Playwright)"
-depends = ["check:unit", "check:rs-test", "check:web"]
+description = "Swift Testing unit tests"
+run = "mise exec -- swift test"
 
 [tasks.fmt]
-description = "Auto-format TypeScript (prettier) and Rust (cargo fmt)"
-run = [
-  "pnpm exec prettier --write .",
-  "cargo fmt --manifest-path src-tauri/Cargo.toml",
-]
+description = "Auto-format Swift sources"
+run = "mise exec -- swift format --in-place --recursive Sources Tests"
 
 [tasks.lint]
-description = "Lint Rust with clippy"
-run = "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings"
+description = "Lint Swift formatting (swift-format, warnings are errors)"
+run = "mise exec -- swift format lint --strict --recursive Sources Tests"

@@ -5,36 +5,96 @@ on:
   push:
     tags: ["v*"]
 
-# tauri-action publishes the release; the cask push happens cross-repo via an App token.
+# The release step uses GITHUB_TOKEN; the cask push happens cross-repo via an App token.
 permissions:
   contents: write
 
 jobs:
   publish:
-    runs-on: macos-latest
+    runs-on: macos-15
+    env:
+      TAG: ${{ github.ref_name }}
     steps:
       - name: "[Setup] | Checkout"
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
+      - name: "[Setup] | Cache Swift build"
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .build
+          key: swift-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            swift-${{ runner.os }}-
+
       - name: "[Setup] | Mise"
         uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
-
-      - name: "[Setup] | Install JS deps"
-        shell: bash -euo pipefail {0}
-        run: pnpm install --frozen-lockfile
-
-      - name: "[Publish] | Build bundle + publish release"
-        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: ${{ github.ref_name }}
-          args: --config src-tauri/tauri.updater.conf.json
-          # Published, not draft: the curl installer's latest/download URL and the
-          # Homebrew cask only resolve against a published, non-prerelease release.
-          releaseDraft: false
+          experimental: true
+
+      - name: "[Validate] | VERSION matches tag"
+        shell: bash -euo pipefail {0}
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [[ "v${version}" != "$TAG" ]]; then
+            echo "::error::VERSION (${version}) does not match pushed tag (${TAG})"
+            exit 1
+          fi
+
+      # Sparkle needs both halves of the EdDSA keypair: the public one gets
+      # baked into Info.plist (bundle.nu), the private one signs the appcast.
+      - name: "[Validate] | Sparkle secrets present"
+        shell: bash -euo pipefail {0}
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          [[ -n "$SPARKLE_PUBLIC_ED_KEY" ]] || { echo "::error::repo variable SPARKLE_PUBLIC_ED_KEY is not set"; exit 1; }
+          [[ -n "$SPARKLE_ED_PRIVATE_KEY" ]] || { echo "::error::secret SPARKLE_ED_PRIVATE_KEY is not set"; exit 1; }
+
+      - name: "[Build] | Assemble .app bundle"
+        shell: bash -euo pipefail {0}
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+        run: mise run build
+
+      - name: "[Build] | Create .dmg"
+        shell: bash -euo pipefail {0}
+        run: |
+          app_path=".build/bundle/release/Slowed and Reverb.app"
+          staging=".build/dmg-staging"
+          rm -rf "$staging"
+          mkdir -p "$staging"
+          ditto "$app_path" "$staging/Slowed and Reverb.app"
+          ln -s /Applications "$staging/Applications"
+          hdiutil create -volname "Slowed and Reverb" -srcfolder "$staging" -ov -format UDZO dmg-build.dmg
+          mv dmg-build.dmg "Slowed.and.Reverb_aarch64.dmg"
+
+      - name: "[Publish] | Generate signed appcast"
+        shell: bash -euo pipefail {0}
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          gen_appcast=".build/artifacts/sparkle/Sparkle/bin/generate_appcast"
+          mkdir -p appcast-src
+          cp "Slowed.and.Reverb_aarch64.dmg" appcast-src/
+          echo "$SPARKLE_ED_PRIVATE_KEY" | "$gen_appcast" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/" \
+            appcast-src
+
+      # Published, not draft: the curl installer's latest/download URL, the
+      # Sparkle feed, and the Homebrew cask only resolve against a published,
+      # non-prerelease release.
+      - name: "[Publish] | Create release and upload assets"
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          fail_on_unmatched_files: true
+          files: |
+            Slowed.and.Reverb_aarch64.dmg
+            appcast-src/appcast.xml
 
       # Cross-repo push to truehhart/homebrew-tap; GITHUB_TOKEN can't reach it.
       - name: "[Setup] | Mint Homebrew tap token"
@@ -51,14 +111,11 @@ jobs:
         shell: bash -euo pipefail {0}
         env:
           TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
-          TAG: ${{ github.ref_name }}
         run: |
           version="${TAG#v}"
-          dmg="$(find src-tauri/target -path '*/bundle/dmg/*.dmg' | head -n1)"
-          test -n "$dmg" || { echo "::error::no .dmg found under src-tauri/target"; exit 1; }
+          dmg="Slowed.and.Reverb_aarch64.dmg"
           sha="$(shasum -a 256 "$dmg" | cut -d' ' -f1)"
-          # Deterministic tagged asset URL — the .dmg name has no spaces, so no encoding needed.
-          dmg_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/$(basename "$dmg")"
+          dmg_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${dmg}"
 
           git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/truehhart/homebrew-tap.git" tap
           mkdir -p tap/Casks

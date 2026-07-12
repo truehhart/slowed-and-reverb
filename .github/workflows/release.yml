@@ -17,14 +17,13 @@ jobs:
       - name: "[Setup] | Checkout"
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - name: "[Validate] | Read Cargo version"
+      - name: "[Validate] | Read VERSION"
         id: version
         shell: bash -euo pipefail {0}
         run: |
-          VERSION="$(cargo metadata --manifest-path src-tauri/Cargo.toml --no-deps --format-version 1 \
-            | jq -r '.packages[] | select(.name == "slowed-and-reverb") | .version')"
+          VERSION="$(tr -d '[:space:]' < VERSION)"
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
-            echo "::error::Cargo version '$VERSION' is not semver MAJOR.MINOR.PATCH"
+            echo "::error::VERSION '$VERSION' is not semver MAJOR.MINOR.PATCH"
             exit 1
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -57,7 +56,7 @@ jobs:
     env:
       TAG: ${{ needs.validate.outputs.tag }}
     steps:
-      # App token, not GITHUB_TOKEN — a GITHUB_TOKEN push won't trigger publish.yml.
+      # App token, not GITHUB_TOKEN: a GITHUB_TOKEN push won't trigger publish.yml.
       - name: "[Setup] | Mint release token"
         id: token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
