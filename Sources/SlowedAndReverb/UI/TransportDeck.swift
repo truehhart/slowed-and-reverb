@@ -61,16 +61,17 @@ struct TransportDeck: View {
   // MARK: now playing + state
 
   private var nowPlaying: some View {
-    VStack(alignment: .leading, spacing: 3) {
-      if let artist = player.currentTrack?.artist {
-        Text(artist)
-          .font(Theme.mono(10.8, bold: true))
-          .kerning(10.8 * 0.1)
-          .textCase(.uppercase)
-          .foregroundStyle(Theme.labelDim)
-          .lineLimit(1)
-          .truncationMode(.tail)
-      }
+    let artist = player.currentTrack?.artist
+    return VStack(alignment: .leading, spacing: 3) {
+      Text(artist ?? " ")
+        .font(Theme.mono(10.8, bold: true))
+        .kerning(10.8 * 0.1)
+        .textCase(.uppercase)
+        .foregroundStyle(Theme.labelDim)
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .opacity(artist == nil ? 0 : 1)
+        .accessibilityHidden(artist == nil)
       MarqueeText(
         text: player.currentTrack?.title ?? "nothing playing",
         font: Theme.archivo(19.2, .bold),

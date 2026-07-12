@@ -41,12 +41,12 @@ struct ConsoleView: View {
       .padding(.horizontal, Theme.pad)
       .padding(.top, Theme.gap)
       TransportDeck(statusLine: statusLine)
-        .frame(height: 102)
+        .frame(height: 122)
         .padding(.horizontal, Theme.pad)
         .padding(.top, 12)
         .padding(.bottom, Theme.pad)
     }
-    .frame(width: 980, height: 620)
+    .frame(width: 980, height: 640)
     .consoleChassisBackground()
     .overlay { vignette.allowsHitTesting(false) }
     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))

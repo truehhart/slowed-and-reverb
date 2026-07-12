@@ -17,6 +17,6 @@ struct SlowedAndReverbApp: App {
     }
     .windowStyle(.hiddenTitleBar)
     .windowResizability(.contentSize)
-    .defaultSize(width: 980, height: 620)
+    .defaultSize(width: 980, height: 640)
   }
 }
