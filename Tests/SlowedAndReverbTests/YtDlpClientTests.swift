@@ -59,6 +59,25 @@ private func canonical(_ url: URL) -> URL {
     #expect(track?.thumbnailURL?.absoluteString == "https://img.example/direct.jpg")
   }
 
+  @Test func infersArtistFromMetadataTitleAndChannel() {
+    let explicit = YtDlpClient.parseTrack(
+      .init(id: "a", title: "Wrong - Song", artist: "  Metadata Artist  ", channel: "Channel"))
+    #expect(explicit?.artist == "Metadata Artist")
+    #expect(explicit?.title == "Wrong - Song")
+
+    let inferred = YtDlpClient.parseTrack(.init(id: "b", title: "Title Artist - Song"))
+    #expect(inferred?.artist == "Title Artist")
+    #expect(inferred?.title == "Song")
+    #expect(
+      YtDlpClient.parseTrack(
+        .init(id: "c", title: "Song Without Artist", channel: "Artist - Topic"))?
+        .artist == "Artist")
+    #expect(YtDlpClient.parseTrack(.init(id: "d", title: "AC-DC Song"))?.artist == nil)
+    #expect(
+      YtDlpClient.parseTrack(.init(id: "e", title: "Official Video - Song", channel: "Fallback"))?
+        .artist == "Fallback")
+  }
+
   @Test func skipsUnplayableEntries() {
     #expect(YtDlpClient.parseTrack(.init(title: "No id")) == nil)
     #expect(
@@ -116,9 +135,34 @@ private func canonical(_ url: URL) -> URL {
 
     let cached = await client.cachedAudio(id: "ccccccccccc")
     #expect(cached?.path == audioPath)
+    #expect(cached?.id == "ccccccccccc")
     #expect(cached?.title == "Cached Title")
 
     #expect(await client.cachedAudio(id: "not-cached-id") == nil)
+  }
+
+  @Test func findsCachedAudioByStoredWebpageURL() async throws {
+    let unresolved = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "ytdlp-cache-test-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: unresolved, withIntermediateDirectories: true)
+    let dir = canonical(unresolved)
+    defer { try? FileManager.default.removeItem(at: unresolved) }
+
+    let client = YtDlpClient(binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: dir)
+    let id = "soundcloud-track"
+    let webpageURL = "https://soundcloud.com/artist/song"
+    let audioPath = dir.appendingPathComponent("\(id).m4a")
+    try Data("audio".utf8).write(to: audioPath)
+    try JSONSerialization.data(
+      withJSONObject: ["title": "Cached Song", "webpageURL": webpageURL]
+    ).write(to: dir.appendingPathComponent("\(id).json"))
+
+    let cached = await client.cachedAudio(url: webpageURL)
+    #expect(cached?.path == audioPath)
+    #expect(cached?.id == id)
+    #expect(cached?.title == "Cached Song")
+    #expect(cached?.webpageURL?.absoluteString == webpageURL)
+    #expect(await client.cachedAudio(url: "https://soundcloud.com/artist/other") == nil)
   }
 
   @Test func cacheSizeSumsTopLevelFilesOnly() async throws {

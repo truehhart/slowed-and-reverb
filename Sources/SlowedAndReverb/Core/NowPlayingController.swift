@@ -84,6 +84,9 @@ final class NowPlayingController {
       MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed,
       MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? speed : 0,
     ]
+    if let artist = track.artist {
+      info[MPMediaItemPropertyArtist] = artist
+    }
     if let artwork = infoCenter.nowPlayingInfo?[MPMediaItemPropertyArtwork],
       artworkTrackID == track.id
     {

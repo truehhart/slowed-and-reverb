@@ -1,59 +1,56 @@
 import SwiftUI
 
-/// The whole tape console: brand plate on top, the active view (player rack /
-/// library / settings) in the middle, transport deck pinned at the bottom.
+/// The whole tape console: integrated chrome, active workspace, and transport deck.
 struct ConsoleView: View {
   enum Tab: String, CaseIterable {
     case player, library, settings
 
-    var enabled: Bool { self != .library }
+    var enabled: Bool { true }
   }
 
   @Environment(PlayerModel.self) private var player
   @Environment(UpdaterModel.self) private var updater
 
   @State private var tab: Tab = .player
-  @State private var window: NSWindow?
   @State private var statusLine = StatusLine()
   @State private var queueBox = QueueBoxModel()
   @State private var keyMonitor: KeyEventMonitor?
 
   var body: some View {
-    VStack(spacing: Theme.gap) {
-      PlateView(tab: $tab, window: window)
-      switch tab {
-      case .player:
-        HStack(alignment: .top, spacing: Theme.gap) {
-          TapeTransportModule()
-            .frame(width: 270)
-          EffectRackModule()
-            .frame(maxWidth: .infinity)
-          QueueModule(queueBox: queueBox, statusLine: statusLine)
-            .frame(width: 280)
+    VStack(spacing: 0) {
+      PlateView(tab: $tab)
+        .frame(height: 70)
+      Group {
+        switch tab {
+        case .player:
+          HStack(alignment: .top, spacing: Theme.gap) {
+            TapeTransportModule()
+              .frame(width: 280)
+            EffectRackModule()
+              .frame(maxWidth: .infinity)
+            QueueModule(queueBox: queueBox, statusLine: statusLine)
+              .frame(width: 318)
+          }
+        case .settings:
+          centered { SettingsView(statusLine: statusLine) }
+        case .library:
+          centered { LibrarySoonView() }
         }
-        .frame(maxHeight: .infinity)
-      case .settings:
-        centered { SettingsView(statusLine: statusLine) }
-      case .library:
-        centered { LibrarySoonView() }
       }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+      .padding(.horizontal, Theme.pad)
+      .padding(.top, Theme.gap)
       TransportDeck(statusLine: statusLine)
+        .frame(height: 102)
+        .padding(.horizontal, Theme.pad)
+        .padding(.top, 12)
+        .padding(.bottom, Theme.pad)
     }
-    .padding(Theme.pad)
     .frame(width: 980, height: 620)
-    .background {
-      ZStack {
-        LinearGradient(
-          colors: [Theme.consoleTop, Theme.consoleBottom], startPoint: .top, endPoint: .bottom)
-        GrainTexture.tile
-          .resizable(resizingMode: .tile)
-      }
-    }
+    .consoleChassisBackground()
     .overlay { vignette.allowsHitTesting(false) }
     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    // the whole console is the drag region; controls' own gestures win
-    .gesture(WindowDragGesture())
-    .background(WindowConfigurator(window: $window))
+    .background(WindowConfigurator())
     .environment(\.colorScheme, .dark)
     .onAppear {
       guard keyMonitor == nil else { return }
@@ -68,14 +65,12 @@ struct ConsoleView: View {
     }
   }
 
-  /// Settings/library layout: a single 360pt column, top-centered.
+  /// Settings/library layout: a single 360pt column, horizontally centered
+  /// and pinned to the top of the shared middle region.
   private func centered(@ViewBuilder _ content: () -> some View) -> some View {
-    VStack {
-      content()
-        .frame(width: 360)
-      Spacer(minLength: 0)
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    content()
+      .frame(width: 360)
+      .frame(maxWidth: .infinity, alignment: .top)
   }
 
   /// Vignette frame above the rack; matches

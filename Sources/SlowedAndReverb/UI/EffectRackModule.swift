@@ -8,7 +8,7 @@ struct EffectRackModule: View {
 
   var body: some View {
     @Bindable var player = player
-    ModuleBox("effect rack") {
+    ModuleBox("effect rack", centeredTitle: true) {
       HStack(spacing: 10) {
         KnobView(
           value: Binding(
@@ -27,7 +27,7 @@ struct EffectRackModule: View {
       }
       .frame(maxHeight: .infinity)
 
-      VStack(spacing: 10) {
+      VStack(spacing: 6) {
         toneRow("space") {
           SegmentedSelector(
             options: ReverbSpace.allCases.map { ($0.rawValue, $0) },

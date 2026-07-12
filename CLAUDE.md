@@ -23,7 +23,7 @@ It is a **Swift Package Manager executable** — no Xcode project, no `.xcodepro
 | Command          | What                                                                     |
 | ---------------- | ------------------------------------------------------------------------ |
 | `mise install`   | install toolchain (swift, yt-dlp, nushell)                               |
-| `mise run dev`   | `swift run` the app unbundled for fast iteration                         |
+| `mise run dev`   | Run unbundled; rebuild and restart when Swift sources change              |
 | `mise run build` | assemble the `.app` bundle (`mise-tasks/bundle.nu`)                       |
 | `mise run check` | pre-commit gate: `swift build` + swift-format lint + file-structure guard |
 | `mise run test`  | Swift Testing suite                                                      |

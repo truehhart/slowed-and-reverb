@@ -93,7 +93,7 @@ actor YtDlpClient: YtDlpClientProtocol {
     let entries = root.entries.map { $0.compactMap(\.value) } ?? [root]
     let tracks = entries.compactMap(Self.parseTrack)
     guard !tracks.isEmpty else { throw YtDlpError.noPlayableTracks }
-    writeCachedTitles(for: tracks)
+    writeCachedMetadata(for: tracks, sourceURL: root.entries == nil ? URL(string: url) : nil)
     return tracks
   }
 
@@ -105,6 +105,10 @@ actor YtDlpClient: YtDlpClientProtocol {
     }
     var id: String?
     var title: String?
+    var artist: String?
+    var creator: String?
+    var channel: String?
+    var uploader: String?
     var webpageURL: String?
     var thumbnail: String?
     var thumbnails: [Thumbnail]?
@@ -122,7 +126,7 @@ actor YtDlpClient: YtDlpClientProtocol {
     }
 
     enum CodingKeys: String, CodingKey {
-      case id, title, thumbnail, thumbnails, duration, entries
+      case id, title, artist, creator, channel, uploader, thumbnail, thumbnails, duration, entries
       case webpageURL = "webpage_url"
     }
   }
@@ -152,41 +156,118 @@ actor YtDlpClient: YtDlpClientProtocol {
       thumbnailURL = nil
     }
 
+    let artist = inferredArtist(for: entry)
     return Track(
-      id: id, title: title, webpageURL: webpageURL, thumbnailURL: thumbnailURL,
+      id: id, title: titleWithoutArtist(title, artist: artist), artist: artist,
+      webpageURL: webpageURL,
+      thumbnailURL: thumbnailURL,
       duration: entry.duration)
   }
 
-  // MARK: - per-track title cache (meta json alongside the audio file)
+  nonisolated static func inferredArtist(for entry: RawEntry) -> String? {
+    for candidate in [entry.artist, entry.creator] {
+      if let value = cleanedArtist(candidate) { return value }
+    }
 
-  private nonisolated struct TitleMeta: Codable {
+    if let title = entry.title {
+      for separator in [" - ", " – "] {
+        if let range = title.range(of: separator),
+          let value = cleanedArtist(String(title[..<range.lowerBound]))
+        {
+          return value
+        }
+      }
+    }
+
+    for candidate in [entry.channel, entry.uploader] {
+      if let value = cleanedArtist(candidate) { return value }
+    }
+    return nil
+  }
+
+  nonisolated static func titleWithoutArtist(_ title: String, artist: String?) -> String {
+    guard let artist else { return title }
+    for separator in [" - ", " – "] {
+      guard let range = title.range(of: separator) else { continue }
+      let prefix = title[..<range.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+      let remainder = title[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+      if prefix.caseInsensitiveCompare(artist) == .orderedSame, !remainder.isEmpty {
+        return remainder
+      }
+    }
+    return title
+  }
+
+  private nonisolated static func cleanedArtist(_ candidate: String?) -> String? {
+    guard var value = candidate?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty
+    else { return nil }
+    if value.hasSuffix(" - Topic") {
+      value.removeLast(" - Topic".count)
+    }
+    let generic = ["official video", "official audio", "music video", "lyrics", "lyric video"]
+    guard value.count <= 100, !generic.contains(value.lowercased()) else { return nil }
+    return value
+  }
+
+  // MARK: - per-track metadata cache
+
+  private nonisolated struct TrackMeta: Codable {
     let title: String
+    let artist: String?
+    let webpageURL: URL?
+    let thumbnailURL: URL?
+    let duration: TimeInterval?
+    let sourceURL: URL?
   }
 
   private func metaPath(id: String) -> URL {
     cacheDir.appendingPathComponent("\(id).json")
   }
 
-  private func writeCachedTitles(for tracks: [Track]) {
+  private func writeCachedMetadata(for tracks: [Track], sourceURL: URL?) {
     try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
     for track in tracks {
-      guard let data = try? JSONEncoder().encode(TitleMeta(title: track.title)) else { continue }
+      let metadata = TrackMeta(
+        title: track.title, artist: track.artist, webpageURL: track.webpageURL,
+        thumbnailURL: track.thumbnailURL,
+        duration: track.duration, sourceURL: sourceURL)
+      guard let data = try? JSONEncoder().encode(metadata) else { continue }
       try? data.write(to: metaPath(id: track.id))
     }
   }
 
-  private func readCachedTitle(id: String) -> String? {
+  private func readCachedMetadata(id: String) -> TrackMeta? {
     guard let data = try? Data(contentsOf: metaPath(id: id)),
-      let meta = try? JSONDecoder().decode(TitleMeta.self, from: data)
+      let meta = try? JSONDecoder().decode(TrackMeta.self, from: data)
     else { return nil }
-    return meta.title
+    return meta
   }
 
   // MARK: - cache scan
 
   func cachedAudio(id: String) -> CachedAudioInfo? {
     guard let path = cachedAudioPath(id: id) else { return nil }
-    return CachedAudioInfo(path: path, title: readCachedTitle(id: id))
+    return cachedAudioInfo(id: id, path: path, metadata: readCachedMetadata(id: id))
+  }
+
+  func cachedAudio(url: String) -> CachedAudioInfo? {
+    guard let requestedURL = URL(string: url) else { return nil }
+    for metadataPath in regularFiles(in: cacheDir) where metadataPath.pathExtension == "json" {
+      let id = metadataPath.deletingPathExtension().lastPathComponent
+      guard let metadata = readCachedMetadata(id: id),
+        metadata.webpageURL == requestedURL || metadata.sourceURL == requestedURL,
+        let path = cachedAudioPath(id: id)
+      else { continue }
+      return cachedAudioInfo(id: id, path: path, metadata: metadata)
+    }
+    return nil
+  }
+
+  private func cachedAudioInfo(id: String, path: URL, metadata: TrackMeta?) -> CachedAudioInfo {
+    CachedAudioInfo(
+      path: path, id: id, title: metadata?.title, artist: metadata?.artist,
+      webpageURL: metadata?.webpageURL,
+      thumbnailURL: metadata?.thumbnailURL, duration: metadata?.duration)
   }
 
   private func cachedAudioPath(id: String) -> URL? {

@@ -9,6 +9,7 @@ final class FakeYtDlpClient: YtDlpClientProtocol, @unchecked Sendable {
   var asyncResolveHandler: ((String) async throws -> [Track])?
   var downloadHandler: ((String, String) async throws -> URL)?
   var cachedAudioByID: [String: CachedAudioInfo] = [:]
+  var cachedAudioByURL: [String: CachedAudioInfo] = [:]
 
   private(set) var resolveCalls: [String] = []
   private(set) var downloadCalls: [(url: String, id: String)] = []
@@ -37,6 +38,10 @@ final class FakeYtDlpClient: YtDlpClientProtocol, @unchecked Sendable {
 
   func cachedAudio(id: String) async -> CachedAudioInfo? {
     cachedAudioByID[id]
+  }
+
+  func cachedAudio(url: String) async -> CachedAudioInfo? {
+    cachedAudioByURL[url]
   }
 
   func artworkURL(for track: Track) async -> URL? { nil }

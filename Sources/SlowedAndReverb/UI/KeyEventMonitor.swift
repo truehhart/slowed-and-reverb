@@ -48,10 +48,10 @@ final class KeyEventMonitor {
       Task { await player.togglePause() }
       return nil
     case "j":
-      player.seek(by: -seekStep)
+      Task { await player.seek(by: -seekStep) }
       return nil
     case "l":
-      player.seek(by: seekStep)
+      Task { await player.seek(by: seekStep) }
       return nil
     default:
       break
@@ -59,10 +59,10 @@ final class KeyEventMonitor {
 
     switch event.keyCode {
     case 123:  // ←
-      player.seek(by: -seekStep)
+      Task { await player.seek(by: -seekStep) }
       return nil
     case 124:  // →
-      player.seek(by: seekStep)
+      Task { await player.seek(by: seekStep) }
       return nil
     case 126:  // ↑
       player.volume = min(1, player.volume + volumeStep)

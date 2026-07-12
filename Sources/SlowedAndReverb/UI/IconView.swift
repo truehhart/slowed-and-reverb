@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct IconView: View {
@@ -28,7 +29,8 @@ struct IconView: View {
       case .mute: return "speaker.slash.fill"
       case .trash: return "trash.fill"
       case .importDown: return "arrow.down.to.line"
-      case .github: return "chevron.left.forwardslash.chevron.right"
+      // .github renders the bundled octocat mark, not an SF Symbol.
+      case .github: return "cat.fill"
       }
     }
 
@@ -54,9 +56,27 @@ struct IconView: View {
   var size: CGFloat = 20
 
   var body: some View {
-    Image(systemName: glyph.systemName)
-      .font(.system(size: size, weight: .regular))
-      .frame(width: size, height: size)
-      .accessibilityLabel(glyph.accessibilityLabel)
+    Group {
+      if glyph == .github, let mark = Self.githubMark {
+        Image(nsImage: mark)
+          .resizable()
+          .aspectRatio(contentMode: .fit)
+      } else {
+        Image(systemName: glyph.systemName)
+          .font(.system(size: size, weight: .regular))
+      }
+    }
+    .frame(width: size, height: size)
+    .accessibilityLabel(glyph.accessibilityLabel)
   }
+
+  /// Bundled GitHub octocat, loaded as a template so it tints with the
+  /// current foreground style like the SF Symbols do.
+  private static let githubMark: NSImage? = {
+    guard let url = Bundle.module.url(forResource: "github-mark", withExtension: "pdf"),
+      let image = NSImage(contentsOf: url)
+    else { return nil }
+    image.isTemplate = true
+    return image
+  }()
 }

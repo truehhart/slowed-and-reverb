@@ -25,7 +25,13 @@ struct QueueModule: View {
       ScrollView(.vertical) {
         VStack(spacing: 6) {
           ForEach(Array(player.queue.enumerated()), id: \.offset) { index, track in
-            QueueRow(number: index + 1, title: track.title, isActive: index == player.index) {
+            QueueRow(
+              number: index + 1,
+              title: track.title,
+              artist: track.artist,
+              duration: track.duration,
+              isActive: index == player.index
+            ) {
               Task { await player.playIndex(index) }
             }
           }
@@ -48,7 +54,7 @@ struct QueueModule: View {
         .opacity(queueBox.isSubmitting ? 0.65 : 1)
         .modifier(PulseWhile(active: queueBox.isSubmitting))
       TextField(
-        "add track / playlist",
+        "ADD TRACK / PLAYLIST",
         text: $queueBox.urlText
       )
       .textFieldStyle(.plain)
@@ -123,6 +129,8 @@ private struct PulseWhile: ViewModifier {
 private struct QueueRow: View {
   let number: Int
   let title: String
+  let artist: String?
+  let duration: TimeInterval?
   let isActive: Bool
   let action: () -> Void
 
@@ -131,23 +139,50 @@ private struct QueueRow: View {
   var body: some View {
     Button(action: action) {
       HStack(spacing: 10) {
+        if isActive {
+          IconView(glyph: .play, size: 10)
+            .foregroundStyle(Theme.ivory)
+        } else {
+          Color.clear
+            .frame(width: 10, height: 10)
+        }
         Text(String(number))
           .font(Theme.mono(13.1))
           .monospacedDigit()
           .foregroundStyle(isActive ? Theme.ivory : Theme.dim)
           .frame(minWidth: 18, alignment: .trailing)
-        Text(title)
-          .font(Theme.archivo(15.7, isActive ? .semiBold : .medium))
-          .lineLimit(1)
-          .truncationMode(.tail)
+        VStack(alignment: .leading, spacing: 2) {
+          MarqueeText(
+            text: title,
+            font: Theme.archivo(15.7, isActive ? .semiBold : .medium),
+            color: isActive ? Theme.ivory : Theme.etch,
+            moves: isActive || hovering,
+            startsImmediately: hovering && !isActive
+          )
+          if let artist {
+            MarqueeText(
+              text: artist,
+              font: Theme.mono(11.2, bold: isActive),
+              color: isActive ? Theme.ivory.opacity(0.72) : Theme.dim,
+              moves: isActive || hovering,
+              startsImmediately: hovering && !isActive
+            )
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         Spacer(minLength: 0)
+        Text(duration.map(TimeFormat.clock) ?? "--:--")
+          .font(Theme.mono(13.1))
+          .monospacedDigit()
+          .foregroundStyle(isActive ? Theme.ivory : Theme.dim)
+          .frame(width: 42, alignment: .trailing)
       }
       .padding(.vertical, 11)
       .padding(.horizontal, 13)
     }
     .buttonStyle(QueueRowButtonStyle(isActive: isActive, hovering: hovering))
     .onHover { hovering = $0 }
-    .accessibilityLabel(title)
+    .accessibilityLabel([title, artist].compactMap { $0 }.joined(separator: ", "))
     .accessibilityValue(isActive ? "Playing" : "Queued")
     .accessibilityHint("Play this track")
   }
@@ -166,16 +201,16 @@ private struct QueueRowButtonStyle: ButtonStyle {
           .fill(
             LinearGradient(
               colors: isActive
-                ? [Theme.queueActiveTop, Theme.queueActiveBottom]
+                ? [Theme.queueActiveTop, Theme.burgundy.opacity(0.084)]
                 : [Theme.queueTop, Theme.queueBottom],
               startPoint: .leading, endPoint: .trailing))
       }
       .overlay {
         shape.strokeBorder(
-          isActive ? Theme.accentRingStrong : hovering ? Theme.meterHover : Theme.line,
+          isActive ? Theme.accentRingStrong.opacity(0.7) : hovering ? Theme.meterHover : Theme.line,
           lineWidth: 1)
       }
-      .shadow(color: isActive ? Theme.accentGlow : .clear, radius: 7)
+      .shadow(color: isActive ? Theme.accentGlow.opacity(0.7) : .clear, radius: 7)
       .contentShape(Rectangle())
       .scaleEffect(configuration.isPressed ? 0.98 : 1)
       .animation(.easeOut(duration: 0.1), value: configuration.isPressed)

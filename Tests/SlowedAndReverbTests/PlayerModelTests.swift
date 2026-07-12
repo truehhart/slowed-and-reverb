@@ -148,6 +148,45 @@ private func makeTrack(_ id: String, title: String? = nil) -> Track {
   }
 }
 
+@Suite struct URLCacheTests {
+  @Test func loadsANonYouTubeURLWithoutResolvingAgain() async {
+    let ytdlp = FakeYtDlpClient()
+    let engine = FakeAudioEngine()
+    let player = PlayerModel(ytdlp: ytdlp, audioEngine: engine)
+    let url = "https://soundcloud.com/artist/song"
+    let path = URL(fileURLWithPath: "/cache/soundcloud-track.m4a")
+    ytdlp.cachedAudioByURL[url] = CachedAudioInfo(
+      path: path, id: "soundcloud-track", title: "Cached Song", webpageURL: URL(string: url),
+      thumbnailURL: nil, duration: 180)
+
+    await player.load(url: url)
+
+    #expect(ytdlp.resolveCalls.isEmpty)
+    #expect(player.currentTrack?.id == "soundcloud-track")
+    #expect(player.currentTrack?.title == "Cached Song")
+    #expect(engine.playedURLs == [path])
+  }
+
+  @Test func addsACachedYouTubeTrackWithoutResolvingAgain() async {
+    let ytdlp = FakeYtDlpClient()
+    let engine = FakeAudioEngine()
+    let player = PlayerModel(ytdlp: ytdlp, audioEngine: engine)
+    let id = "-jRKsiAOAA8"
+    let url = "https://www.youtube.com/watch?v=\(id)"
+    let path = URL(fileURLWithPath: "/cache/\(id).m4a")
+    ytdlp.cachedAudioByID[id] = CachedAudioInfo(
+      path: path, id: id, title: "Falling Down", webpageURL: URL(string: url),
+      thumbnailURL: nil, duration: 198)
+
+    let added = await player.add(url: url)
+
+    #expect(added == 1)
+    #expect(ytdlp.resolveCalls.isEmpty)
+    #expect(player.currentTrack?.id == id)
+    #expect(engine.playedURLs == [path])
+  }
+}
+
 @Suite struct TogglePauseTests {
   @Test func replaysTheCurrentTrackAfterTheQueueEnded() async {
     let ytdlp = FakeYtDlpClient()

@@ -35,6 +35,8 @@ import Testing
     #expect(URLParsing.videoID(from: "https://youtu.be/aaaaaaaaaaa") == "aaaaaaaaaaa")
     #expect(
       URLParsing.videoID(from: "https://www.youtube.com/watch?v=aaaaaaaaaaa") == "aaaaaaaaaaa")
+    #expect(
+      URLParsing.videoID(from: "https://www.youtube.com/watch?v=-jRKsiAOAA8") == "-jRKsiAOAA8")
     #expect(URLParsing.videoID(from: "https://youtube.com/shorts/aaaaaaaaaaa") == "aaaaaaaaaaa")
     #expect(URLParsing.videoID(from: "https://youtube.com/embed/aaaaaaaaaaa") == "aaaaaaaaaaa")
     #expect(URLParsing.videoID(from: "https://youtube.com/live/aaaaaaaaaaa") == "aaaaaaaaaaa")

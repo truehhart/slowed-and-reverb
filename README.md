@@ -56,7 +56,7 @@ The app is a Swift Package Manager executable (no Xcode project). [mise](https:/
 
 ```sh
 mise install      # install the toolchain
-mise run dev      # swift run, unbundled, for fast iteration
+mise run dev      # run unbundled; rebuild and restart when Swift sources change
 mise run test     # Swift Testing suite
 mise run check    # pre-commit gate: swift build + swift-format lint + file-structure guard
 mise run build    # assemble the .app bundle (Sparkle + bundled yt-dlp)

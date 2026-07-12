@@ -39,21 +39,21 @@ final class FakeAudioEngine: AudioEngineProtocol {
     duration = 100
   }
 
-  func stop() {
+  func stop() async {
     stopCallCount += 1
     hasSource = false
     paused = false
   }
 
   @discardableResult
-  func togglePause() -> Bool {
+  func togglePause() async -> Bool {
     guard hasSource else { return false }
     paused.toggle()
     return paused
   }
 
   @discardableResult
-  func restart() -> Bool {
+  func restart() async -> Bool {
     restartCallCount += 1
     guard restartSucceeds else { return false }
     hasSource = true
@@ -62,7 +62,7 @@ final class FakeAudioEngine: AudioEngineProtocol {
     return true
   }
 
-  func seek(to time: TimeInterval) {
+  func seek(to time: TimeInterval) async {
     currentTime = time
   }
 

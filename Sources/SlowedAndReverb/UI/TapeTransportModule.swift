@@ -6,16 +6,14 @@ struct TapeTransportModule: View {
   @Environment(PlayerModel.self) private var player
 
   var body: some View {
-    ModuleBox("tape transport") {
+    ModuleBox("tape transport", centeredTitle: true) {
       let playing = player.status == .playing
-      HStack {
-        Spacer()
-        ReelView(period: 3, playing: playing)
-        Spacer()
-        ReelView(period: 4.5, playing: playing)
-        Spacer()
+      HStack(spacing: 8) {
+        ReelView(period: 3.6, playing: playing)
+        ReelView(period: 4.2, playing: playing)
       }
-      .padding(.vertical, 4)
+      .frame(maxWidth: .infinity)
+      .padding(.top, 2)
 
       VUMeterView()
 
@@ -26,9 +24,9 @@ struct TapeTransportModule: View {
         .kerning(31.2 * 0.04)
         .monospacedDigit()
         .foregroundStyle(Theme.amber)
-        .shadow(color: Theme.amberGlow, radius: 5)
         .frame(maxWidth: .infinity)
         .padding(13)
+        .shadow(color: Theme.amberGlow, radius: 5)
         .railBackground(depth: 9)
     }
   }

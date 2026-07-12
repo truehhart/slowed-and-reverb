@@ -121,20 +121,14 @@ final class PlayerModel {
     lastError = nil
     let startAt = URLParsing.startSeconds(from: url)
 
-    if let cachedID = URLParsing.videoID(from: url), let parsedURL = URL(string: url),
-      let cached = await ytdlp.cachedAudio(id: cachedID)
-    {
+    if let (track, path, hasTitle) = await cachedTrack(for: url) {
       guard request == requestToken else { return }
-      Log.player.debug("cache hit for direct video url: \(cachedID, privacy: .public)")
-      queue = [
-        Track(
-          id: cachedID, title: cached.title ?? "cached video", webpageURL: parsedURL,
-          thumbnailURL: nil)
-      ]
+      Log.player.debug("cache hit for url: \(url, privacy: .public)")
+      queue = [track]
       index = -1
-      pathCache[cachedID] = cached.path
-      if cached.title == nil {
-        Task { await self.refreshCachedTitle(url: url, id: cachedID) }
+      pathCache[track.id] = path
+      if !hasTitle {
+        Task { await self.refreshCachedTitle(url: url, id: track.id) }
       }
       await playIndex(0, startAt: startAt)
       return
@@ -169,6 +163,17 @@ final class PlayerModel {
     requestToken += 1
     let request = requestToken
     lastError = nil
+    if let (track, path, _) = await cachedTrack(for: url) {
+      guard request == requestToken else { return 0 }
+      let startFrom = queue.count
+      queue.append(track)
+      pathCache[track.id] = path
+      if index < 0 {
+        await playIndex(startFrom)
+      }
+      return 1
+    }
+
     let tracks: [Track]
     do {
       tracks = try await ytdlp.resolve(url: url)
@@ -201,7 +206,7 @@ final class PlayerModel {
     // Stop the outgoing track now, before any download/decode: otherwise it
     // keeps playing under the new track's UI state, and its onEnded could
     // even auto-advance past the user's selection.
-    audioEngine.stop()
+    await audioEngine.stop()
     duration = 0
     let track = queue[i]
     index = i
@@ -270,7 +275,7 @@ final class PlayerModel {
   /// Toggle play/pause. When idle with a current track, restarts it from 0.
   func togglePause() async {
     if status == .idle, currentTrack != nil {
-      if audioEngine.restart() {
+      if await audioEngine.restart() {
         consecutiveFailures = 0
         duration = audioEngine.duration
         setStatus(.playing)
@@ -283,7 +288,7 @@ final class PlayerModel {
     // Only a playing/paused track can be toggled; ignore when idle (nothing
     // loaded, or the queue ended) or mid-load.
     guard status == .playing || status == .paused else { return }
-    let paused = audioEngine.togglePause()
+    let paused = await audioEngine.togglePause()
     setStatus(paused ? .paused : .playing)
   }
 
@@ -298,7 +303,7 @@ final class PlayerModel {
     let canRestart = status == .playing || status == .paused
     if canRestart,
       !hasPrevious || audioEngine.currentTime > Self.prevRestartSeconds,
-      audioEngine.restart()
+      await audioEngine.restart()
     {
       consecutiveFailures = 0
       duration = audioEngine.duration
@@ -319,14 +324,14 @@ final class PlayerModel {
     await playIndex(index - 1 >= 0 ? index - 1 : queue.count - 1)
   }
 
-  func seek(to time: TimeInterval) {
-    audioEngine.seek(to: time)
+  func seek(to time: TimeInterval) async {
+    await audioEngine.seek(to: time)
     refreshPosition()
     updateNowPlayingPosition()
   }
 
-  func seek(by delta: TimeInterval) {
-    seek(to: currentTime + delta)
+  func seek(by delta: TimeInterval) async {
+    await seek(to: currentTime + delta)
   }
 
   /// Empty the queue and stop playback, including in-flight downloads.
@@ -335,7 +340,7 @@ final class PlayerModel {
     playToken += 1  // a stale in-flight download won't start audio
     cancelDownloads()
     await ytdlp.cancelActiveDownload()
-    audioEngine.stop()
+    await audioEngine.stop()
     queue = []
     index = -1
     duration = 0
@@ -444,7 +449,28 @@ final class PlayerModel {
     guard let track = tracks.first(where: { $0.id == id }) ?? tracks.first else { return }
     guard queue.first?.id == id else { return }
     queue[0].title = track.title
+    queue[0].artist = track.artist
     if index == 0 { await updateNowPlayingTrack() }
+  }
+
+  private func cachedTrack(for url: String) async -> (Track, URL, Bool)? {
+    guard let parsedURL = URL(string: url) else { return nil }
+    let cachedByID: CachedAudioInfo?
+    if let id = URLParsing.videoID(from: url) {
+      cachedByID = await ytdlp.cachedAudio(id: id)
+    } else {
+      cachedByID = nil
+    }
+    let cachedByURL = cachedByID == nil ? await ytdlp.cachedAudio(url: url) : nil
+    let cached = cachedByID ?? cachedByURL
+    guard let cached else { return nil }
+    let artist = cached.artist ?? YtDlpClient.inferredArtist(for: .init(title: cached.title))
+    let title = YtDlpClient.titleWithoutArtist(cached.title ?? "cached track", artist: artist)
+    let track = Track(
+      id: cached.id, title: title, artist: artist,
+      webpageURL: cached.webpageURL ?? parsedURL, thumbnailURL: cached.thumbnailURL,
+      duration: cached.duration)
+    return (track, cached.path, cached.title != nil)
   }
 
   /// A track failed to download or decode (e.g. age-gated video yt-dlp can't
@@ -452,7 +478,7 @@ final class PlayerModel {
   /// .failed; give up only once the whole queue has proved unplayable.
   private func skipFailedTrack(failedIndex: Int, token: Int) async {
     guard token == playToken else { return }
-    audioEngine.stop()
+    await audioEngine.stop()
     consecutiveFailures += 1
     let nextIndex: Int
     if failedIndex + 1 < queue.count {
@@ -479,7 +505,7 @@ final class PlayerModel {
     } else if repeatMode == .queue, !queue.isEmpty {
       await playIndex(0)
     } else {
-      audioEngine.stop()
+      await audioEngine.stop()
       duration = 0
       setStatus(.idle)  // reached the end → nothing playing
     }
@@ -589,10 +615,10 @@ extension PlayerModel: NowPlayingDelegate {
   }
 
   func nowPlayingDidRequestSeek(to time: TimeInterval) {
-    seek(to: time)
+    Task { await self.seek(to: time) }
   }
 
   func nowPlayingDidRequestSkip(by delta: TimeInterval) {
-    seek(by: delta)
+    Task { await self.seek(by: delta) }
   }
 }

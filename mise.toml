@@ -4,10 +4,15 @@ experimental = true # core swift backend
 [tools]
 yt-dlp = "latest"
 "aqua:nushell/nushell" = "latest"
+watchexec = "latest"
 swift = "6.3.3"
 
 [tasks.dev]
-description = "Run the app for fast iteration (swift run, unbundled)"
+description = "Run the app and restart it when Swift sources change"
+run = "mise watch dev:run --restart --watch Sources --watch Package.swift --watch Package.resolved"
+
+[tasks."dev:run"]
+hide = true
 run = "mise exec -- swift run"
 
 [tasks.build]

@@ -8,8 +8,6 @@ enum Theme {
   // MARK: palette
 
   static let ink = rgb(0x14_0F_0A)
-  static let consoleTop = rgb(0x22_1A_13)
-  static let consoleBottom = rgb(0x14_0F_0A)
   static let panel = rgb(0x2C_23_19)
   static let panel2 = rgb(0x1F_18_10)
   static let plate = rgb(0x2C_23_19)
@@ -33,6 +31,8 @@ enum Theme {
   static let queueActiveTop = rgb(0x2A_20_16)
   static let queueActiveBottom = rgb(0x1C_15_0D)
   static let buttonInk = rgb(0x2A_0F_08)
+  static let playTop = rgb(0xDD_47_36)
+  static let playBottom = rgb(0xB0_2C_28)
   static let buttonHi = Color.white.opacity(0.22)
   static let error = rgb(0xFF_8B_78)
   static let accentRing = rgb(0xEE_6A_4E).opacity(0.45)
@@ -50,6 +50,19 @@ enum Theme {
   static let knobLow = rgb(0x14_10_0C)
   static let faderTop = rgb(0xFF_F2_DD)
   static let faderBottom = rgb(0xCD_BF_A8)
+
+  // MARK: material
+
+  static let chassisTop = rgb(0x29_20_17)
+  static let chassisBottom = rgb(0x12_0E_0A)
+  static let chassisRim = rgb(0xF7_E9_D4).opacity(0.14)
+  static let chassisGrainOpacity = 0.16
+  static let chassisMottleOpacity = 0.14
+  static let faceplateGrainOpacity = 0.22
+  static let faceplateMottleOpacity = 0.2
+  static let recessGrainOpacity = 0.1
+  static let chromeGrainOpacity = 0.13
+  static let chromeSeam = Color.black.opacity(0.72)
 
   // MARK: metrics
 
@@ -104,38 +117,8 @@ enum Theme {
 }
 
 extension View {
-  /// Panel background used by modules, the plate, and the deck: vertical
-  /// gradient, hairline ring, and a top metal highlight.
-  func panelBackground(
-    _ top: Color = Theme.panel, _ bottom: Color = Theme.panel2, radius: CGFloat = Theme.radiusLG
-  ) -> some View {
-    background {
-      let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-      shape
-        .fill(LinearGradient(colors: [top, bottom], startPoint: .top, endPoint: .bottom))
-        .overlay(shape.strokeBorder(Theme.line, lineWidth: 1))
-        .overlay(
-          shape.strokeBorder(
-            LinearGradient(
-              stops: [
-                .init(color: Theme.metalHi, location: 0),
-                .init(color: .clear, location: 0.08),
-              ],
-              startPoint: .top, endPoint: .bottom),
-            lineWidth: 1)
-        )
-    }
-  }
-
   /// Recessed rail background (nav, segmented selectors, counter, meters).
   func railBackground(radius: CGFloat = Theme.radiusSM, depth: CGFloat = 6) -> some View {
-    background {
-      let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-      shape
-        .fill(
-          Theme.rail.shadow(.inner(color: .black.opacity(0.6), radius: depth / 2, x: 0, y: 2))
-        )
-        .overlay(shape.strokeBorder(Theme.line, lineWidth: 1))
-    }
+    recessBackground(radius: radius, depth: depth)
   }
 }

@@ -4,6 +4,9 @@ import Foundation
 /// Graph: player -> varispeed -> dry+[highpass -> reverb -> wetMixer] -> mainMixer.
 @MainActor
 final class AVFoundationAudioEngine: AudioEngineProtocol {
+  private static let attackDuration: TimeInterval = 0.01
+  private static let releaseDuration: TimeInterval = 0.01
+
   private let engine = AVAudioEngine()
   private let playerNode = AVAudioPlayerNode()
   private let varispeed = AVAudioUnitVarispeed()
@@ -200,45 +203,45 @@ final class AVFoundationAudioEngine: AudioEngineProtocol {
     ensureEngineRunning()
   }
 
-  func stop() {
-    stopSource()
+  func stop() async {
+    guard await releaseSource() else { return }
     currentFile = nil
     duration = 0
   }
 
   @discardableResult
-  func togglePause() -> Bool {
+  func togglePause() async -> Bool {
     if !paused, hasSource {
       startOffset = currentTime
       paused = true
-      applyMasterGain()
-      stopSource()
+      guard await releaseSource() else { return paused }
       return true
     }
     guard paused else { return false }
+    stopSource()
     startSource(offset: startOffset)
     ensureEngineRunning()
     return false
   }
 
   @discardableResult
-  func restart() -> Bool {
+  func restart() async -> Bool {
     guard currentFile != nil else { return false }
-    stopSource()
+    guard await releaseSource() else { return false }
     paused = false
     startSource(offset: 0)
     ensureEngineRunning()
     return true
   }
 
-  func seek(to time: TimeInterval) {
+  func seek(to time: TimeInterval) async {
     guard hasSource || paused, currentFile != nil else { return }
     let target = max(0, min(time, duration))
     if paused {
       startOffset = target
       return
     }
-    stopSource()
+    guard await releaseSource() else { return }
     startSource(offset: target)
   }
 
@@ -283,7 +286,17 @@ final class AVFoundationAudioEngine: AudioEngineProtocol {
       completionCallbackType: .dataPlayedBack,
       completionHandler: completion
     )
+    playerNode.volume = 0
     playerNode.play()
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      let steps = 10
+      for step in 1...steps {
+        try? await Task.sleep(for: .seconds(Self.attackDuration / Double(steps)))
+        guard myGeneration == generation, hasSource else { return }
+        playerNode.volume = Float(step) / Float(steps)
+      }
+    }
   }
 
   /// Stop without firing onEnded: bump generation first so the outgoing
@@ -292,10 +305,24 @@ final class AVFoundationAudioEngine: AudioEngineProtocol {
   /// callers that are entering/leaving pause set it themselves.
   private func stopSource() {
     generation &+= 1
-    if hasSource {
-      playerNode.stop()
-    }
+    playerNode.stop()
     hasSource = false
+  }
+
+  private func releaseSource() async -> Bool {
+    guard hasSource else { return true }
+    generation &+= 1
+    let myGeneration = generation
+    hasSource = false
+    let initialVolume = playerNode.volume
+    let steps = 10
+    for step in 1...steps {
+      try? await Task.sleep(for: .seconds(Self.releaseDuration / Double(steps)))
+      guard myGeneration == generation else { return false }
+      playerNode.volume = initialVolume * Float(steps - step) / Float(steps)
+    }
+    playerNode.stop()
+    return true
   }
 
   private func fireEndedIfCurrent(expected: UInt64) {

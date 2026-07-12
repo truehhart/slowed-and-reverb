@@ -16,23 +16,16 @@ struct KnobView: View {
   @State private var scrollMonitor: Any?
   @State private var text = ""
   @FocusState private var fieldFocused: Bool
-  @FocusState private var knobFocused: Bool
 
-  private let faceSize: CGFloat = 132
+  private let faceSize: CGFloat = 122
   private let sweep = 270.0
   private let dragPixelsPerRange = 240.0
 
   var body: some View {
-    VStack(spacing: 14) {
+    VStack(spacing: 8) {
       face
         .focusable()
-        .focused($knobFocused)
         .focusEffectDisabled()
-        .overlay {
-          if knobFocused {
-            Circle().strokeBorder(Theme.accentRingStrong, lineWidth: 2)
-          }
-        }
         .gesture(drag)
         .onHover { over in
           hovering = over
@@ -73,72 +66,72 @@ struct KnobView: View {
     .contentShape(Circle())
   }
 
-  /// `repeating-conic-gradient(from 215deg, etch 0 1.3deg, transparent 27deg)`
-  /// masked to a thin outer ring: tick marks every 27°.
   private var ticks: some View {
     Canvas { context, size in
       let center = CGPoint(x: size.width / 2, y: size.height / 2)
-      let outer = size.width / 2 + 2
-      var css = 215.0
-      while css < 215 + 360 {
-        let path = ringSlice(
-          center: center, inner: outer * 0.88, outer: outer * 0.96,
-          fromCSSDegrees: css, toCSSDegrees: css + 1.3)
-        context.fill(path, with: .color(Theme.etch.opacity(0.45)))
-        css += 27
+      let outer = size.width / 2 - 1
+      for step in 0..<11 {
+        let degrees = 225.0 + Double(step) * (sweep / 10)
+        let radians = (degrees - 90) * .pi / 180
+        let isMajor = step == 0 || step == 5 || step == 10
+        let length: CGFloat = isMajor ? 9 : 6
+        let inner = outer - length
+        var path = Path()
+        path.move(
+          to: CGPoint(x: center.x + cos(radians) * inner, y: center.y + sin(radians) * inner))
+        path.addLine(
+          to: CGPoint(x: center.x + cos(radians) * outer, y: center.y + sin(radians) * outer))
+        context.stroke(
+          path, with: .color(Theme.etch.opacity(isMajor ? 0.72 : 0.48)),
+          lineWidth: isMajor ? 1.6 : 1.2)
       }
     }
-    .padding(-2)
   }
 
-  /// Burgundy conic arc from 225° (CSS) across the sweep, dim rail beyond it.
   private var arc: some View {
-    let inset: CGFloat = 7
     return Canvas { context, size in
       let center = CGPoint(x: size.width / 2, y: size.height / 2)
-      let outer = size.width / 2
-      let inner = outer * 0.845
+      let outer = size.width * 0.43
+      let inner = size.width * 0.355
       let track = ringSlice(
         center: center, inner: inner, outer: outer,
         fromCSSDegrees: 225 + angle, toCSSDegrees: 225 + sweep)
-      context.fill(track, with: .color(Theme.lineSoft))
+      context.fill(track, with: .color(.black.opacity(0.56)))
       if angle > 0.5 {
         let lit = ringSlice(
           center: center, inner: inner, outer: outer,
           fromCSSDegrees: 225, toCSSDegrees: 225 + angle)
         context.drawLayer { layer in
-          layer.addFilter(.shadow(color: Theme.accentGlow, radius: 6))
-          layer.fill(lit, with: .color(Theme.burgundy))
+          layer.addFilter(.shadow(color: Theme.accentGlow, radius: 4))
+          layer.fill(lit, with: .color(Theme.burgundyDeep))
+          layer.stroke(lit, with: .color(Theme.burgundy.opacity(0.9)), lineWidth: 1.4)
         }
       }
     }
-    .padding(inset)
   }
 
   private var dome: some View {
-    let diameter = faceSize - 40
+    let diameter = faceSize * 0.74
     return ZStack {
+      outerGrip
+      gripGrooves
       Circle()
         .fill(
           RadialGradient(
             stops: [
-              .init(color: Theme.knobHi, location: 0),
-              .init(color: Theme.knobMid, location: 0.46),
-              .init(color: Theme.knobLow, location: 1),
+              .init(color: .white.opacity(0.1), location: 0),
+              .init(color: .white.opacity(0.025), location: 0.54),
+              .init(color: .clear, location: 0.8),
             ],
-            center: UnitPoint(x: 0.5, y: 0.34), startRadius: 0, endRadius: diameter * 0.75))
-      machining(diameter: diameter)
-      // top inner highlight + bottom inner shade
+            center: UnitPoint(x: 0.42, y: 0.32), startRadius: 0, endRadius: diameter * 0.66)
+        )
+        .blendMode(.screen)
+      texturedCap(diameter: diameter)
       Circle()
         .fill(
           Color.clear
-            .shadow(
-              .inner(color: Color(red: 1, green: 0.98, blue: 0.94).opacity(0.18), radius: 1.5, y: 2)
-            )
-            .shadow(.inner(color: .black.opacity(0.65), radius: 8, y: -8)))
-      Circle().strokeBorder(.black.opacity(0.55), lineWidth: 1)
+            .shadow(.inner(color: .black.opacity(0.78), radius: 4, y: -3)))
       indicator(diameter: diameter)
-      cap(diameter: diameter)
     }
     .frame(width: diameter, height: diameter)
     .rotationEffect(.degrees(angle - 135))
@@ -151,16 +144,78 @@ struct KnobView: View {
     }
   }
 
-  /// Fine concentric grooves: `repeating-radial-gradient(#0002 0 1px, transparent 1px 3px)`.
-  private func machining(diameter: CGFloat) -> some View {
+  private var outerGrip: some View {
+    Circle()
+      .fill(
+        RadialGradient(
+          stops: [
+            .init(color: Theme.knobMid.opacity(0.8), location: 0),
+            .init(color: Theme.knobLow.opacity(0.94), location: 0.66),
+            .init(color: .black.opacity(0.98), location: 1),
+          ],
+          center: UnitPoint(x: 0.44, y: 0.34), startRadius: 0, endRadius: faceSize * 0.46)
+      )
+      .overlay(Circle().strokeBorder(.black.opacity(0.95), lineWidth: 2))
+      .overlay(Circle().strokeBorder(.white.opacity(0.1), lineWidth: 0.8).padding(2.2))
+  }
+
+  private var gripGrooves: some View {
     Canvas { context, size in
       let center = CGPoint(x: size.width / 2, y: size.height / 2)
-      var r: CGFloat = 3
-      while r < size.width / 2 {
-        let rect = CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)
-        context.stroke(
-          Path(ellipseIn: rect), with: .color(.black.opacity(0.1)), lineWidth: 1)
-        r += 3
+      let outer = size.width * 0.45
+      let inner = size.width * 0.385
+      for index in 0..<60 {
+        let radians = Double(index) * 6 * .pi / 180
+        let start = CGPoint(x: center.x + cos(radians) * inner, y: center.y + sin(radians) * inner)
+        let end = CGPoint(x: center.x + cos(radians) * outer, y: center.y + sin(radians) * outer)
+        var path = Path()
+        path.move(to: start)
+        path.addLine(to: end)
+        context.stroke(path, with: .color(.black.opacity(0.78)), lineWidth: 1.2)
+        context.stroke(path, with: .color(.white.opacity(0.07)), lineWidth: 0.35)
+      }
+    }
+    .clipShape(Circle())
+  }
+
+  private func texturedCap(diameter: CGFloat) -> some View {
+    let capDiameter = diameter * 0.68
+    return ZStack {
+      Circle()
+        .fill(
+          RadialGradient(
+            stops: [
+              .init(color: Theme.knobHi.opacity(0.58), location: 0),
+              .init(color: Theme.knobMid.opacity(0.92), location: 0.56),
+              .init(color: Theme.knobLow, location: 1),
+            ],
+            center: UnitPoint(x: 0.42, y: 0.3), startRadius: 0, endRadius: capDiameter * 0.72))
+      grit
+      Circle()
+        .strokeBorder(.black.opacity(0.92), lineWidth: 2)
+        .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 0.7).padding(1.3))
+    }
+    .frame(width: capDiameter, height: capDiameter)
+    .shadow(color: .black.opacity(0.75), radius: 3, y: 2)
+  }
+
+  private var grit: some View {
+    Canvas { context, size in
+      let center = CGPoint(x: size.width / 2, y: size.height / 2)
+      let radius = size.width / 2 - 2
+      for index in 0..<180 {
+        let seed = Double(index)
+        let angle = seed * 2.399_963_23
+        let distance = sqrt(
+          (sin(seed * 12.9898) * 43_758.5453).truncatingRemainder(dividingBy: 1).magnitude)
+        let point = CGPoint(
+          x: center.x + cos(angle) * distance * radius,
+          y: center.y + sin(angle) * distance * radius)
+        let speckSize = 0.35 + (seed.truncatingRemainder(dividingBy: 4) * 0.14)
+        let color: Color = index.isMultiple(of: 3) ? .black.opacity(0.22) : .white.opacity(0.1)
+        context.fill(
+          Path(ellipseIn: CGRect(x: point.x, y: point.y, width: speckSize, height: speckSize)),
+          with: .color(color))
       }
     }
     .clipShape(Circle())
@@ -173,39 +228,25 @@ struct KnobView: View {
           LinearGradient(
             colors: [Theme.faderTop, Theme.burgundy], startPoint: .top, endPoint: .bottom)
         )
-        .frame(width: 4, height: 26)
-        .shadow(color: Theme.accentGlow, radius: 4)
-        .padding(.top, 9)
+        .frame(width: 3.5, height: 24)
+        .shadow(color: Theme.accentGlow, radius: 3)
+        .padding(.top, 8)
       Spacer()
     }
     .frame(width: diameter, height: diameter)
   }
 
-  private func cap(diameter: CGFloat) -> some View {
-    Circle()
-      .fill(
-        RadialGradient(
-          colors: [Theme.knobMid, Theme.rail],
-          center: UnitPoint(x: 0.4, y: 0.35), startRadius: 0, endRadius: diameter * 0.1)
-      )
-      .overlay {
-        Circle().fill(
-          Color.clear.shadow(.inner(color: .black.opacity(0.8), radius: 1, y: 1)))
-      }
-      .padding(diameter * 0.42)
-  }
-
   // MARK: readout
 
   private var readout: some View {
-    VStack(spacing: 3) {
+    VStack(spacing: 2) {
       TextField("", text: $text)
         .textFieldStyle(.plain)
-        .font(Theme.mono(24, bold: true))
+        .font(Theme.mono(22, bold: true))
         .monospacedDigit()
         .multilineTextAlignment(.center)
         .foregroundStyle(fieldFocused ? Theme.burgundy : Theme.ivory)
-        .frame(width: 24 * 0.61 * 4, height: 30)
+        .frame(width: 22 * 0.61 * 4, height: 26)
         .focused($fieldFocused)
         .accessibilityLabel("\(label) value")
         .onSubmit { commitText() }

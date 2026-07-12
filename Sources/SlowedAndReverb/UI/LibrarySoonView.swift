@@ -5,7 +5,7 @@ struct LibrarySoonView: View {
   var body: some View {
     ModuleBox("library", expands: false) {
       Text(
-        "A persistent collection — playlists, sorting, storage cap — is coming. "
+        "A persistent collection of playlists, sorting, and storage controls is coming. "
           + "For now, the \u{201C}up next\u{201D} queue holds your session."
       )
       .font(Theme.archivo(12.5, .medium))

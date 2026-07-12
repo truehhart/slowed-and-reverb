@@ -23,18 +23,18 @@ protocol AudioEngineProtocol: AnyObject {
   func play(fileURL: URL, startAt: TimeInterval) throws
 
   /// Stop immediately without firing `onEnded`.
-  func stop()
+  func stop() async
 
   /// Returns true if now paused.
   @discardableResult
-  func togglePause() -> Bool
+  func togglePause() async -> Bool
 
   /// Restart the current track from 0. Returns false if nothing is loaded.
   @discardableResult
-  func restart() -> Bool
+  func restart() async -> Bool
 
   /// Seek, preserving paused/playing state. No-op if nothing is loaded.
-  func seek(to time: TimeInterval)
+  func seek(to time: TimeInterval) async
 
   func levels() -> (l: Float, r: Float)
 }

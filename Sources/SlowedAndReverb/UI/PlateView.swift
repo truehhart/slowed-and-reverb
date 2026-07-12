@@ -1,44 +1,26 @@
 import AppKit
 import SwiftUI
 
-/// Brand plate: window traffic lights, the brand logo, the view switcher,
-/// GitHub link, and the version tag — with corner screws for flourish.
+/// Integrated app chrome: brand, navigation, links, and version.
 struct PlateView: View {
   @Binding var tab: ConsoleView.Tab
-  let window: NSWindow?
 
   var body: some View {
     HStack(spacing: 16) {
-      lights
       brand
       Spacer(minLength: 0)
       nav
       githubLink
       versionTag
     }
-    .padding(.vertical, 12)
-    .padding(.horizontal, 28)
-    .panelBackground(Theme.plate, Theme.plate2)
-    .overlay { screws }
-  }
-
-  // MARK: window lights
-
-  private var lights: some View {
-    HStack(spacing: 8) {
-      LightButton(
-        top: rgb(0xFF9A93), bottom: rgb(0xFF5F57), accessibilityLabel: "Close window"
-      ) { window?.close() }
-      LightButton(
-        top: rgb(0xFFD27A), bottom: rgb(0xFEBC2E), accessibilityLabel: "Minimize window"
-      ) { window?.miniaturize(nil) }
-      // Fixed-size window: zoom would only ruin the layout, so it's inert
-      // and greyed out, like a macOS app that can't zoom.
-      LightButton(
-        top: rgb(0x74E08A), bottom: rgb(0x28C840), accessibilityLabel: "Zoom window",
-        enabled: false
-      ) {}
-    }
+    .padding(.vertical, 14)
+    .padding(.leading, Theme.pad)
+    .padding(.trailing, Theme.pad + 8)
+    .topChromeBackground()
+    .contentShape(Rectangle())
+    // The plate is the window's drag handle. Its own buttons keep priority,
+    // so dragging empty plate space moves the window without eating clicks.
+    .gesture(WindowDragGesture())
   }
 
   private var brand: some View {
@@ -83,70 +65,10 @@ struct PlateView: View {
       .font(Theme.mono(9.9))
       .kerning(9.9 * 0.16)
       .textCase(.uppercase)
-      .foregroundStyle(Theme.labelDim)
+      .foregroundStyle(AppInfo.version == "dev" ? Theme.burgundy : Theme.labelDim)
       .fixedSize()
   }
 
-  private var screws: some View {
-    HStack {
-      screw
-      Spacer()
-      screw
-    }
-    .padding(.horizontal, 9)
-  }
-
-  private var screw: some View {
-    Circle()
-      .fill(
-        RadialGradient(
-          colors: [rgb(0x4A4032), rgb(0x15110B)],
-          center: UnitPoint(x: 0.38, y: 0.32), startRadius: 0, endRadius: 5)
-      )
-      .overlay(Circle().strokeBorder(.black.opacity(0.5), lineWidth: 1))
-      .frame(width: 7, height: 7)
-  }
-
-  private func rgb(_ value: UInt32) -> Color {
-    Color(
-      red: Double((value >> 16) & 0xFF) / 255,
-      green: Double((value >> 8) & 0xFF) / 255,
-      blue: Double(value & 0xFF) / 255)
-  }
-}
-
-/// One traffic light: crisp rim + tiny gloss, brightens on hover.
-private struct LightButton: View {
-  let top: Color
-  let bottom: Color
-  let accessibilityLabel: String
-  var enabled = true
-  let action: () -> Void
-
-  @State private var hovering = false
-
-  var body: some View {
-    Button(action: action) {
-      Circle()
-        .fill(
-          RadialGradient(
-            colors: [top, bottom], center: UnitPoint(x: 0.35, y: 0.3),
-            startRadius: 0, endRadius: 9)
-        )
-        .overlay(Circle().strokeBorder(.black.opacity(0.45), lineWidth: 0.5))
-        .overlay(alignment: .top) {
-          Circle().fill(.white.opacity(0.35)).frame(width: 8, height: 3).blur(radius: 1)
-            .padding(.top, 1)
-        }
-        .frame(width: 12, height: 12)
-        .saturation(enabled ? 1 : 0.3)
-        .brightness(hovering && enabled ? 0.12 : enabled ? 0 : -0.15)
-    }
-    .buttonStyle(.plain)
-    .disabled(!enabled)
-    .onHover { hovering = $0 }
-    .accessibilityLabel(accessibilityLabel)
-  }
 }
 
 /// A view-switcher tab in the plate's rail.
@@ -198,6 +120,8 @@ private struct SwitchButtonStyle: ButtonStyle {
             .shadow(color: Theme.accentGlow, radius: 5)
         }
       }
+      // Whole pill (padding included) is tappable/hoverable, selected or not.
+      .contentShape(shape)
       .opacity(isEnabled ? 1 : 0.45)
       .scaleEffect(configuration.isPressed ? 0.96 : 1)
       .animation(.easeOut(duration: 0.15), value: isSelected)
