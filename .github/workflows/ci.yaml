@@ -1,5 +1,5 @@
-name: check
-run-name: check ${{ github.ref_name }}
+name: ci
+run-name: "[${{ github.ref_name }}] ${{ github.event.head_commit.message || github.event.pull_request.title || github.workflow }}"
 
 on:
   push:
@@ -8,14 +8,14 @@ on:
   workflow_call:
 
 jobs:
-  check:
+  ci:
     runs-on: macos-26
     steps:
       - name: "[Setup] | Checkout"
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: "[Setup] | Cache Swift build"
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .build
           key: swift-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
@@ -34,6 +34,10 @@ jobs:
       - name: "[Check] | Swift build"
         shell: bash -euo pipefail {0}
         run: mise run check:build
+
+      - name: "[Check] | File structure"
+        shell: bash -euo pipefail {0}
+        run: mise run check:structure
 
       - name: "[Test] | Swift Testing"
         shell: bash -euo pipefail {0}
