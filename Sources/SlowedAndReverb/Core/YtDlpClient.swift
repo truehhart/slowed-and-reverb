@@ -71,7 +71,10 @@ actor YtDlpClient: YtDlpClientProtocol {
     try FileManager.default.createDirectory(
       at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     let model = NSManagedObjectModel()
-    model.entities = [SongMetadata.makeEntity()]
+    model.entities = [
+      SongMetadata.makeEntity(), PlaylistMetadata.makeEntity(),
+      PlaylistSongMembership.makeEntity(),
+    ]
     let container = NSPersistentContainer(name: "Library", managedObjectModel: model)
     try container.persistentStoreCoordinator.addPersistentStore(
       ofType: NSSQLiteStoreType, configurationName: nil, at: url,
@@ -137,7 +140,15 @@ actor YtDlpClient: YtDlpClientProtocol {
     let entries = root.entries.map { $0.compactMap(\.value) } ?? [root]
     let tracks = entries.compactMap(Self.parseTrack)
     guard !tracks.isEmpty else { throw YtDlpError.noPlayableTracks }
-    persistMetadata(for: tracks, sourceURL: root.entries == nil ? URL(string: url) : nil)
+    let sourceURL = URL(string: url)
+    if root.entries != nil, let playlistID = root.id, !playlistID.isEmpty,
+      let playlistTitle = root.title, !playlistTitle.isEmpty, let sourceURL
+    {
+      persistResolvedPlaylist(
+        id: playlistID, title: playlistTitle, sourceURL: sourceURL, tracks: tracks)
+    } else {
+      persistMetadata(for: tracks, sourceURL: sourceURL)
+    }
     return tracks
   }
 
@@ -310,6 +321,49 @@ actor YtDlpClient: YtDlpClientProtocol {
     }
   }
 
+  private func persistPlaylist(id: String, title: String, sourceURL: URL, tracks: [Track]) {
+    guard let libraryContainer = initializedLibraryContainer() else { return }
+    let context = libraryContainer.newBackgroundContext()
+    do {
+      try context.performAndWait {
+        let playlistRequest = NSFetchRequest<PlaylistMetadata>(entityName: "PlaylistMetadata")
+        playlistRequest.predicate = NSPredicate(format: "id == %@", id)
+        playlistRequest.fetchLimit = 1
+        let playlist =
+          try context.fetch(playlistRequest).first
+          ?? NSEntityDescription.insertNewObject(
+            forEntityName: "PlaylistMetadata", into: context) as! PlaylistMetadata
+        let isNew = playlist.isInserted
+        playlist.id = id
+        playlist.title = title
+        playlist.sourceURL = sourceURL.absoluteString
+        if isNew { playlist.addedAt = Date() }
+
+        let oldMemberships = NSFetchRequest<PlaylistSongMembership>(
+          entityName: "PlaylistSongMembership")
+        oldMemberships.predicate = NSPredicate(format: "playlistID == %@", id)
+        try context.fetch(oldMemberships).forEach(context.delete)
+        for (position, track) in tracks.enumerated() {
+          let membership =
+            NSEntityDescription.insertNewObject(
+              forEntityName: "PlaylistSongMembership", into: context)
+            as! PlaylistSongMembership
+          membership.playlistID = id
+          membership.songID = track.id
+          membership.position = Int64(position)
+        }
+        try context.save()
+      }
+    } catch {
+      Log.ytdlp.error("could not store playlist: \(error, privacy: .public)")
+    }
+  }
+
+  func persistResolvedPlaylist(id: String, title: String, sourceURL: URL, tracks: [Track]) {
+    persistMetadata(for: tracks, sourceURL: nil)
+    persistPlaylist(id: id, title: title, sourceURL: sourceURL, tracks: tracks)
+  }
+
   private func readMetadata(id: String) -> StoredMetadata? {
     guard let libraryContainer = initializedLibraryContainer() else { return nil }
     let context = libraryContainer.newBackgroundContext()
@@ -340,8 +394,85 @@ actor YtDlpClient: YtDlpClientProtocol {
       addedAt: metadata.addedAt)
   }
 
-  func libraryTracks() -> [Track] {
-    allMetadata().compactMap(\.track)
+  func librarySnapshot() -> LibrarySnapshot {
+    guard let libraryContainer = initializedLibraryContainer() else { return .empty }
+    let context = libraryContainer.newBackgroundContext()
+    return
+      (try? context.performAndWait {
+        let songRequest = NSFetchRequest<SongMetadata>(entityName: "SongMetadata")
+        songRequest.sortDescriptors = [NSSortDescriptor(key: "addedAt", ascending: false)]
+        let metadata = try context.fetch(songRequest).map(Self.storedMetadata)
+        let songs = metadata.compactMap { stored in
+          stored.track.map { LibrarySong(track: $0, addedAt: stored.addedAt) }
+        }
+        let tracksByID = Dictionary(uniqueKeysWithValues: songs.map { ($0.id, $0.track) })
+
+        let playlistRequest = NSFetchRequest<PlaylistMetadata>(entityName: "PlaylistMetadata")
+        playlistRequest.sortDescriptors = [NSSortDescriptor(key: "addedAt", ascending: false)]
+        let storedPlaylists = try context.fetch(playlistRequest)
+        let membershipRequest = NSFetchRequest<PlaylistSongMembership>(
+          entityName: "PlaylistSongMembership")
+        membershipRequest.sortDescriptors = [NSSortDescriptor(key: "position", ascending: true)]
+        let memberships = Dictionary(
+          grouping: try context.fetch(membershipRequest), by: \.playlistID)
+        let playlists = storedPlaylists.compactMap { playlist -> LibraryPlaylist? in
+          guard let sourceURL = URL(string: playlist.sourceURL) else { return nil }
+          let tracks = (memberships[playlist.id] ?? []).compactMap { tracksByID[$0.songID] }
+          return LibraryPlaylist(
+            id: playlist.id, title: playlist.title, sourceURL: sourceURL,
+            addedAt: playlist.addedAt, tracks: tracks)
+        }
+        return LibrarySnapshot(songs: songs, playlists: playlists)
+      }) ?? .empty
+  }
+
+  func removeLibrarySong(id: String) throws {
+    cancelActiveDownload()
+    for url in cachedFiles(forSongID: id) {
+      do {
+        try FileManager.default.removeItem(at: url)
+      } catch {
+        throw YtDlpError.failed("could not delete cached file \(url.lastPathComponent): \(error)")
+      }
+    }
+    guard let libraryContainer = initializedLibraryContainer() else {
+      throw YtDlpError.failed("library database unavailable")
+    }
+    let context = libraryContainer.newBackgroundContext()
+    try context.performAndWait {
+      let memberships = NSFetchRequest<PlaylistSongMembership>(
+        entityName: "PlaylistSongMembership")
+      memberships.predicate = NSPredicate(format: "songID == %@", id)
+      try context.fetch(memberships).forEach(context.delete)
+      let songs = NSFetchRequest<SongMetadata>(entityName: "SongMetadata")
+      songs.predicate = NSPredicate(format: "id == %@", id)
+      try context.fetch(songs).forEach(context.delete)
+      try context.save()
+    }
+  }
+
+  func removeLibraryPlaylist(id: String) throws {
+    guard let libraryContainer = initializedLibraryContainer() else {
+      throw YtDlpError.failed("library database unavailable")
+    }
+    let context = libraryContainer.newBackgroundContext()
+    try context.performAndWait {
+      let memberships = NSFetchRequest<PlaylistSongMembership>(
+        entityName: "PlaylistSongMembership")
+      memberships.predicate = NSPredicate(format: "playlistID == %@", id)
+      try context.fetch(memberships).forEach(context.delete)
+      let playlists = NSFetchRequest<PlaylistMetadata>(entityName: "PlaylistMetadata")
+      playlists.predicate = NSPredicate(format: "id == %@", id)
+      try context.fetch(playlists).forEach(context.delete)
+      try context.save()
+    }
+  }
+
+  private func cachedFiles(forSongID id: String) -> [URL] {
+    regularFiles(in: cacheDir).filter {
+      let stem = $0.deletingPathExtension().lastPathComponent
+      return stem == id || stem == "\(id)_thumb"
+    }
   }
 
   private nonisolated static func migrateLegacyMetadata(

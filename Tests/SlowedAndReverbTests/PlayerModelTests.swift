@@ -333,3 +333,35 @@ private func makeTrack(_ id: String, title: String? = nil) -> Track {
     #expect(player.index == 0)  // repeat-one replays index 0, not advancing
   }
 }
+
+@Suite struct LibraryPlayerActionTests {
+  @Test func playReplacesQueueAndAddAppendsInOrder() async {
+    let ytdlp = FakeYtDlpClient()
+    let engine = FakeAudioEngine()
+    let player = PlayerModel(ytdlp: ytdlp, audioEngine: engine)
+    let old = makeTrack("old")
+    ytdlp.resolveHandler = { _ in [old] }
+    await player.load(url: "old")
+    let playlist = [makeTrack("first"), makeTrack("second")]
+
+    await player.playLibraryTracks(playlist)
+    #expect(player.queue.map(\.id) == ["first", "second"])
+    #expect(player.index == 0)
+    player.addLibraryTracks([makeTrack("third")])
+    #expect(player.queue.map(\.id) == ["first", "second", "third"])
+  }
+
+  @Test func removalUsesClientAndSurfacesFailure() async {
+    let ytdlp = FakeYtDlpClient()
+    let player = PlayerModel(ytdlp: ytdlp, audioEngine: FakeAudioEngine())
+
+    try? await player.removeLibrarySong(id: "song")
+    try? await player.removeLibraryPlaylist(id: "playlist")
+    #expect(ytdlp.removedSongIDs == ["song"])
+    #expect(ytdlp.removedPlaylistIDs == ["playlist"])
+
+    ytdlp.removeSongError = YtDlpError.failed("disk denied")
+    await #expect(throws: (any Error).self) { try await player.removeLibrarySong(id: "blocked") }
+    #expect(player.lastError?.contains("disk denied") == true)
+  }
+}

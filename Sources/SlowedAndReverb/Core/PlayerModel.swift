@@ -376,8 +376,45 @@ final class PlayerModel {
     await ytdlp.artworkURL(for: track)
   }
 
-  func libraryTracks() async -> [Track] {
-    await ytdlp.libraryTracks()
+  func librarySnapshot() async -> LibrarySnapshot {
+    await ytdlp.librarySnapshot()
+  }
+
+  func playLibraryTracks(_ tracks: [Track]) async {
+    guard !tracks.isEmpty else { return }
+    requestToken += 1
+    queue = tracks
+    index = -1
+    await playIndex(0)
+  }
+
+  func addLibraryTracks(_ tracks: [Track]) {
+    queue.append(contentsOf: tracks)
+  }
+
+  func removeLibrarySong(id: String) async throws {
+    downloadTasks[id]?.task.cancel()
+    if downloadTasks[id] != nil {
+      await ytdlp.cancelActiveDownload()
+    }
+    do {
+      try await ytdlp.removeLibrarySong(id: id)
+      pathCache.removeValue(forKey: id)
+      lastError = nil
+    } catch {
+      lastError = String(describing: error)
+      throw error
+    }
+  }
+
+  func removeLibraryPlaylist(id: String) async throws {
+    do {
+      try await ytdlp.removeLibraryPlaylist(id: id)
+      lastError = nil
+    } catch {
+      lastError = String(describing: error)
+      throw error
+    }
   }
 
   // MARK: cache maintenance (settings UI)

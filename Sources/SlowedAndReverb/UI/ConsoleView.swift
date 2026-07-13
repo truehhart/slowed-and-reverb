@@ -34,7 +34,7 @@ struct ConsoleView: View {
         case .settings:
           centered { SettingsView(statusLine: statusLine) }
         case .library:
-          centered { LibrarySoonView() }
+          LibraryView(statusLine: statusLine)
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

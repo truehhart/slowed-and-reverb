@@ -10,10 +10,15 @@ final class FakeYtDlpClient: YtDlpClientProtocol, @unchecked Sendable {
   var downloadHandler: ((String, String) async throws -> URL)?
   var cachedAudioByID: [String: CachedAudioInfo] = [:]
   var cachedAudioByURL: [String: CachedAudioInfo] = [:]
+  var snapshot = LibrarySnapshot.empty
+  var removeSongError: (any Error)?
+  var removePlaylistError: (any Error)?
 
   private(set) var resolveCalls: [String] = []
   private(set) var downloadCalls: [(url: String, id: String)] = []
   private(set) var cancelCount = 0
+  private(set) var removedSongIDs: [String] = []
+  private(set) var removedPlaylistIDs: [String] = []
 
   func resolve(url: String) async throws -> [Track] {
     resolveCalls.append(url)
@@ -44,7 +49,26 @@ final class FakeYtDlpClient: YtDlpClientProtocol, @unchecked Sendable {
     cachedAudioByURL[url]
   }
 
-  func libraryTracks() async -> [Track] { [] }
+  func librarySnapshot() async -> LibrarySnapshot { snapshot }
+
+  func removeLibrarySong(id: String) async throws {
+    if let removeSongError { throw removeSongError }
+    removedSongIDs.append(id)
+    snapshot = LibrarySnapshot(
+      songs: snapshot.songs.filter { $0.id != id },
+      playlists: snapshot.playlists.map { playlist in
+        LibraryPlaylist(
+          id: playlist.id, title: playlist.title, sourceURL: playlist.sourceURL,
+          addedAt: playlist.addedAt, tracks: playlist.tracks.filter { $0.id != id })
+      })
+  }
+
+  func removeLibraryPlaylist(id: String) async throws {
+    if let removePlaylistError { throw removePlaylistError }
+    removedPlaylistIDs.append(id)
+    snapshot = LibrarySnapshot(
+      songs: snapshot.songs, playlists: snapshot.playlists.filter { $0.id != id })
+  }
   func artworkURL(for track: Track) async -> URL? { nil }
   func cacheSize() async -> UInt64 { 0 }
   func purgeCache() async throws {}

@@ -1,3 +1,4 @@
+import CoreData
 import Foundation
 import Testing
 
@@ -214,7 +215,7 @@ private func canonical(_ url: URL) -> URL {
     let client = YtDlpClient(
       binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: cacheDir,
       libraryURL: libraryURL)
-    #expect(await client.libraryTracks().map(\.title) == ["Durable Song"])
+    #expect(await client.librarySnapshot().songs.map(\.track.title) == ["Durable Song"])
 
     try await client.purgeCache()
 
@@ -222,8 +223,160 @@ private func canonical(_ url: URL) -> URL {
     let reopened = YtDlpClient(
       binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: cacheDir,
       libraryURL: libraryURL)
-    let library = await reopened.libraryTracks()
-    #expect(library.map(\.title) == ["Durable Song"])
-    #expect(library.first?.webpageURL.absoluteString == webpageURL)
+    let library = await reopened.librarySnapshot().songs
+    #expect(library.map(\.track.title) == ["Durable Song"])
+    #expect(library.first?.track.webpageURL.absoluteString == webpageURL)
+  }
+}
+
+@Suite struct PlaylistLibraryPersistenceTests {
+  @Test func persistsOrderedSharedSongsAcrossRestartsAndReimports() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "ytdlp-playlist-test-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let libraryURL = root.appendingPathComponent("Library.sqlite")
+    let client = makeLibraryClient(root: root, libraryURL: libraryURL)
+    let a = persistedTrack("a", title: "First")
+    let b = persistedTrack("b", title: "Second")
+    let c = persistedTrack("c", title: "Third")
+
+    await client.persistResolvedPlaylist(
+      id: "one", title: "One", sourceURL: URL(string: "https://x/one")!, tracks: [b, a, b])
+    await client.persistResolvedPlaylist(
+      id: "two", title: "Two", sourceURL: URL(string: "https://x/two")!, tracks: [a, c])
+    let original = await client.librarySnapshot()
+    let songDates = Dictionary(uniqueKeysWithValues: original.songs.map { ($0.id, $0.addedAt) })
+    let playlistDate = original.playlists.first { $0.id == "one" }?.addedAt
+    #expect(original.playlists.first { $0.id == "one" }?.tracks.map(\.id) == ["b", "a", "b"])
+
+    await client.persistResolvedPlaylist(
+      id: "one", title: "One Updated", sourceURL: URL(string: "https://x/one-new")!,
+      tracks: [c, b])
+    let reopened = makeLibraryClient(root: root, libraryURL: libraryURL)
+    let snapshot = await reopened.librarySnapshot()
+
+    #expect(Set(snapshot.songs.map(\.id)) == Set(["a", "b", "c"]))
+    #expect(snapshot.songs.allSatisfy { songDates[$0.id] == $0.addedAt })
+    #expect(snapshot.playlists.first { $0.id == "one" }?.title == "One Updated")
+    #expect(snapshot.playlists.first { $0.id == "one" }?.tracks.map(\.id) == ["c", "b"])
+    #expect(snapshot.playlists.first { $0.id == "one" }?.addedAt == playlistDate)
+    #expect(snapshot.playlists.first { $0.id == "two" }?.tracks.map(\.id) == ["a", "c"])
+  }
+
+  @Test func songRemovalDeletesOnlyTargetCacheAndCleansMemberships() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "ytdlp-removal-test-\(UUID().uuidString)")
+    let cache = root.appendingPathComponent("cache")
+    try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let client = YtDlpClient(
+      binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: cache,
+      libraryURL: root.appendingPathComponent("Library.sqlite"))
+    let a = persistedTrack("a", title: "First")
+    let b = persistedTrack("b", title: "Second")
+    await client.persistResolvedPlaylist(
+      id: "one", title: "One", sourceURL: URL(string: "https://x/one")!, tracks: [a, b])
+    for name in ["a.m4a", "a_thumb.jpg", "b.m4a"] {
+      try Data(name.utf8).write(to: cache.appendingPathComponent(name))
+    }
+
+    try await client.removeLibrarySong(id: "a")
+    let snapshot = await client.librarySnapshot()
+
+    #expect(snapshot.songs.map(\.id) == ["b"])
+    #expect(snapshot.playlists.first?.tracks.map(\.id) == ["b"])
+    #expect(!FileManager.default.fileExists(atPath: cache.appendingPathComponent("a.m4a").path))
+    #expect(
+      !FileManager.default.fileExists(atPath: cache.appendingPathComponent("a_thumb.jpg").path))
+    #expect(FileManager.default.fileExists(atPath: cache.appendingPathComponent("b.m4a").path))
+  }
+
+  @Test func playlistRemovalKeepsSongsAndCachedFiles() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "ytdlp-removal-test-\(UUID().uuidString)")
+    let cache = root.appendingPathComponent("cache")
+    try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let client = YtDlpClient(
+      binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: cache,
+      libraryURL: root.appendingPathComponent("Library.sqlite"))
+    let song = persistedTrack("a", title: "First")
+    await client.persistResolvedPlaylist(
+      id: "one", title: "One", sourceURL: URL(string: "https://x/one")!, tracks: [song])
+    let audio = cache.appendingPathComponent("a.m4a")
+    try Data("audio".utf8).write(to: audio)
+
+    try await client.removeLibraryPlaylist(id: "one")
+    let snapshot = await client.librarySnapshot()
+
+    #expect(snapshot.playlists.isEmpty)
+    #expect(snapshot.songs.map(\.id) == ["a"])
+    #expect(FileManager.default.fileExists(atPath: audio.path))
+  }
+
+  @Test func cacheDeletionFailureKeepsSongMetadata() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "ytdlp-removal-test-\(UUID().uuidString)")
+    let cache = root.appendingPathComponent("cache")
+    try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let client = YtDlpClient(
+      binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: cache,
+      libraryURL: root.appendingPathComponent("Library.sqlite"))
+    let song = persistedTrack("a", title: "Protected")
+    await client.persistResolvedPlaylist(
+      id: "one", title: "One", sourceURL: URL(string: "https://x/one")!, tracks: [song])
+    let audio = cache.appendingPathComponent("a.m4a")
+    try Data("audio".utf8).write(to: audio)
+    try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: audio.path)
+    defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: audio.path) }
+
+    await #expect(throws: (any Error).self) { try await client.removeLibrarySong(id: "a") }
+
+    #expect(await client.librarySnapshot().songs.map(\.id) == ["a"])
+  }
+
+  @Test func migratesTheSongOnlyCoreDataStore() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "ytdlp-migration-test-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let libraryURL = root.appendingPathComponent("Library.sqlite")
+    try makeSongOnlyStore(at: libraryURL)
+
+    let client = makeLibraryClient(root: root, libraryURL: libraryURL)
+    let snapshot = await client.librarySnapshot()
+
+    #expect(snapshot.songs.map(\.track.title) == ["Migrated"])
+    #expect(snapshot.playlists.isEmpty)
+  }
+
+  private func makeLibraryClient(root: URL, libraryURL: URL) -> YtDlpClient {
+    YtDlpClient(
+      binaryURL: URL(fileURLWithPath: "/usr/bin/true"),
+      cacheDir: root.appendingPathComponent("cache"), libraryURL: libraryURL)
+  }
+
+  private nonisolated func persistedTrack(_ id: String, title: String) -> Track {
+    Track(
+      id: id, title: title, webpageURL: URL(string: "https://example.test/\(id)")!,
+      thumbnailURL: nil)
+  }
+
+  private func makeSongOnlyStore(at url: URL) throws {
+    let model = NSManagedObjectModel()
+    model.entities = [SongMetadata.makeEntity()]
+    let container = NSPersistentContainer(name: "Library", managedObjectModel: model)
+    let store = try container.persistentStoreCoordinator.addPersistentStore(
+      ofType: NSSQLiteStoreType, configurationName: nil, at: url)
+    let context = container.newBackgroundContext()
+    try context.performAndWait {
+      let metadata =
+        NSEntityDescription.insertNewObject(
+          forEntityName: "SongMetadata", into: context) as! SongMetadata
+      metadata.update(from: persistedTrack("migrated", title: "Migrated"), sourceURL: nil)
+      try context.save()
+    }
+    try container.persistentStoreCoordinator.remove(store)
   }
 }

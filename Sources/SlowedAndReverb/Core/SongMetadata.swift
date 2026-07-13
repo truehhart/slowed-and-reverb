@@ -12,6 +12,7 @@ nonisolated final class SongMetadata: NSManagedObject {
   @NSManaged var addedAt: Date
 
   func update(from track: Track, sourceURL: URL?, addedAt: Date = Date()) {
+    let shouldSetAddedAt = isInserted
     id = track.id
     title = track.title
     artist = track.artist
@@ -19,7 +20,7 @@ nonisolated final class SongMetadata: NSManagedObject {
     thumbnailURL = track.thumbnailURL?.absoluteString
     duration = track.duration.map(NSNumber.init(value:))
     self.sourceURL = sourceURL?.absoluteString
-    self.addedAt = addedAt
+    if shouldSetAddedAt { self.addedAt = addedAt }
   }
 
   static func makeEntity() -> NSEntityDescription {
