@@ -1,3 +1,4 @@
+import CoreData
 import Foundation
 import Synchronization
 
@@ -15,6 +16,9 @@ actor YtDlpClient: YtDlpClientProtocol {
   }
 
   private let binary: Binary
+  private let libraryURL: URL
+  private var libraryContainer: NSPersistentContainer?
+  private var didInitializeLibrary = false
   /// Immutable and `Sendable`, so this stays nonisolated: callers read it
   /// without hopping onto the actor.
   let cacheDir: URL
@@ -28,9 +32,10 @@ actor YtDlpClient: YtDlpClientProtocol {
   /// without an explicit lock.
   private var thumbnailFetches: [String: Task<URL?, Never>] = [:]
 
-  init(binaryURL: URL? = nil, cacheDir: URL? = nil) {
+  init(binaryURL: URL? = nil, cacheDir: URL? = nil, libraryURL: URL? = nil) {
     self.binary = binaryURL.map(Binary.bundled) ?? Self.discoverBinary()
     self.cacheDir = cacheDir ?? Self.defaultCacheDir()
+    self.libraryURL = libraryURL ?? Self.defaultLibraryURL()
     warmUp()
   }
 
@@ -50,6 +55,45 @@ actor YtDlpClient: YtDlpClientProtocol {
       ?? URL(fileURLWithPath: NSTemporaryDirectory())
     let identifier = Bundle.main.bundleIdentifier ?? "com.truehhart.slowed-and-reverb"
     return base.appendingPathComponent(identifier)
+  }
+
+  private nonisolated static func defaultLibraryURL() -> URL {
+    let base =
+      FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+      ?? URL(fileURLWithPath: NSTemporaryDirectory())
+    let identifier = Bundle.main.bundleIdentifier ?? "com.truehhart.slowed-and-reverb"
+    return base.appendingPathComponent(identifier).appendingPathComponent("Library.store")
+  }
+
+  private nonisolated static func makeLibraryContainer(at url: URL) throws
+    -> NSPersistentContainer
+  {
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let model = NSManagedObjectModel()
+    model.entities = [SongMetadata.makeEntity()]
+    let container = NSPersistentContainer(name: "Library", managedObjectModel: model)
+    try container.persistentStoreCoordinator.addPersistentStore(
+      ofType: NSSQLiteStoreType, configurationName: nil, at: url,
+      options: [
+        NSMigratePersistentStoresAutomaticallyOption: true,
+        NSInferMappingModelAutomaticallyOption: true,
+      ])
+    return container
+  }
+
+  private func initializedLibraryContainer() -> NSPersistentContainer? {
+    if didInitializeLibrary { return libraryContainer }
+    didInitializeLibrary = true
+    do {
+      let container = try Self.makeLibraryContainer(at: libraryURL)
+      libraryContainer = container
+      Self.migrateLegacyMetadata(in: cacheDir, to: container)
+      return container
+    } catch {
+      Log.ytdlp.error("library database unavailable: \(error, privacy: .public)")
+      return nil
+    }
   }
 
   private nonisolated func makeProcess(args: [String]) -> Process {
@@ -93,7 +137,7 @@ actor YtDlpClient: YtDlpClientProtocol {
     let entries = root.entries.map { $0.compactMap(\.value) } ?? [root]
     let tracks = entries.compactMap(Self.parseTrack)
     guard !tracks.isEmpty else { throw YtDlpError.noPlayableTracks }
-    writeCachedMetadata(for: tracks, sourceURL: root.entries == nil ? URL(string: url) : nil)
+    persistMetadata(for: tracks, sourceURL: root.entries == nil ? URL(string: url) : nil)
     return tracks
   }
 
@@ -209,7 +253,7 @@ actor YtDlpClient: YtDlpClientProtocol {
     return value
   }
 
-  // MARK: - per-track metadata cache
+  // MARK: - library
 
   private nonisolated struct TrackMeta: Codable {
     let title: String
@@ -220,54 +264,154 @@ actor YtDlpClient: YtDlpClientProtocol {
     let sourceURL: URL?
   }
 
-  private func metaPath(id: String) -> URL {
-    cacheDir.appendingPathComponent("\(id).json")
-  }
+  private nonisolated struct StoredMetadata {
+    let id: String
+    let title: String
+    let artist: String?
+    let webpageURL: String
+    let thumbnailURL: String?
+    let duration: TimeInterval?
+    let sourceURL: String?
+    let addedAt: Date
 
-  private func writeCachedMetadata(for tracks: [Track], sourceURL: URL?) {
-    try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-    for track in tracks {
-      let metadata = TrackMeta(
-        title: track.title, artist: track.artist, webpageURL: track.webpageURL,
-        thumbnailURL: track.thumbnailURL,
-        duration: track.duration, sourceURL: sourceURL)
-      guard let data = try? JSONEncoder().encode(metadata) else { continue }
-      try? data.write(to: metaPath(id: track.id))
+    var track: Track? {
+      guard let webpageURL = URL(string: webpageURL) else { return nil }
+      return Track(
+        id: id, title: title, artist: artist, webpageURL: webpageURL,
+        thumbnailURL: thumbnailURL.flatMap(URL.init(string:)), duration: duration)
     }
   }
 
-  private func readCachedMetadata(id: String) -> TrackMeta? {
-    guard let data = try? Data(contentsOf: metaPath(id: id)),
-      let meta = try? JSONDecoder().decode(TrackMeta.self, from: data)
-    else { return nil }
-    return meta
+  private func persistMetadata(for tracks: [Track], sourceURL: URL?) {
+    guard let libraryContainer = initializedLibraryContainer() else { return }
+    let context = libraryContainer.newBackgroundContext()
+    do {
+      try context.performAndWait {
+        let request = NSFetchRequest<SongMetadata>(entityName: "SongMetadata")
+        request.predicate = NSPredicate(format: "id IN %@", tracks.map(\.id))
+        var existing = Dictionary(
+          uniqueKeysWithValues: try context.fetch(request).map { ($0.id, $0) })
+        for track in tracks {
+          let metadata: SongMetadata
+          if let stored = existing[track.id] {
+            metadata = stored
+          } else {
+            metadata =
+              NSEntityDescription.insertNewObject(
+                forEntityName: "SongMetadata", into: context) as! SongMetadata
+            existing[track.id] = metadata
+          }
+          metadata.update(from: track, sourceURL: sourceURL)
+        }
+        try context.save()
+      }
+    } catch {
+      Log.ytdlp.error("could not store metadata: \(error, privacy: .public)")
+    }
+  }
+
+  private func readMetadata(id: String) -> StoredMetadata? {
+    guard let libraryContainer = initializedLibraryContainer() else { return nil }
+    let context = libraryContainer.newBackgroundContext()
+    return try? context.performAndWait {
+      let request = NSFetchRequest<SongMetadata>(entityName: "SongMetadata")
+      request.predicate = NSPredicate(format: "id == %@", id)
+      request.fetchLimit = 1
+      return try context.fetch(request).first.map(Self.storedMetadata)
+    }
+  }
+
+  private func allMetadata() -> [StoredMetadata] {
+    guard let libraryContainer = initializedLibraryContainer() else { return [] }
+    let context = libraryContainer.newBackgroundContext()
+    return
+      (try? context.performAndWait {
+        let request = NSFetchRequest<SongMetadata>(entityName: "SongMetadata")
+        request.sortDescriptors = [NSSortDescriptor(key: "addedAt", ascending: false)]
+        return try context.fetch(request).map(Self.storedMetadata)
+      }) ?? []
+  }
+
+  private nonisolated static func storedMetadata(_ metadata: SongMetadata) -> StoredMetadata {
+    StoredMetadata(
+      id: metadata.id, title: metadata.title, artist: metadata.artist,
+      webpageURL: metadata.webpageURL, thumbnailURL: metadata.thumbnailURL,
+      duration: metadata.duration?.doubleValue, sourceURL: metadata.sourceURL,
+      addedAt: metadata.addedAt)
+  }
+
+  func libraryTracks() -> [Track] {
+    allMetadata().compactMap(\.track)
+  }
+
+  private nonisolated static func migrateLegacyMetadata(
+    in cacheDir: URL, to container: NSPersistentContainer
+  ) {
+    let legacyEntries = regularFiles(in: cacheDir).compactMap { path -> (URL, String, TrackMeta)? in
+      guard path.pathExtension == "json", let data = try? Data(contentsOf: path),
+        let metadata = try? JSONDecoder().decode(TrackMeta.self, from: data)
+      else { return nil }
+      let id = path.deletingPathExtension().lastPathComponent
+      return (path, id, metadata)
+    }
+    guard !legacyEntries.isEmpty else { return }
+
+    let context = container.newBackgroundContext()
+    do {
+      try context.performAndWait {
+        let request = NSFetchRequest<SongMetadata>(entityName: "SongMetadata")
+        request.predicate = NSPredicate(format: "id IN %@", legacyEntries.map { $0.1 })
+        let existing = Dictionary(
+          uniqueKeysWithValues: try context.fetch(request).map { ($0.id, $0) })
+        for (_, id, legacy) in legacyEntries {
+          let webpageURL =
+            legacy.webpageURL ?? URL(string: "https://www.youtube.com/watch?v=\(id)")!
+          let track = Track(
+            id: id, title: legacy.title, artist: legacy.artist, webpageURL: webpageURL,
+            thumbnailURL: legacy.thumbnailURL, duration: legacy.duration)
+          let metadata =
+            existing[id]
+            ?? NSEntityDescription.insertNewObject(
+              forEntityName: "SongMetadata", into: context) as! SongMetadata
+          metadata.update(from: track, sourceURL: legacy.sourceURL)
+        }
+        try context.save()
+      }
+      for (path, _, _) in legacyEntries {
+        try FileManager.default.removeItem(at: path)
+      }
+    } catch {
+      Log.ytdlp.error("could not migrate legacy metadata: \(error, privacy: .public)")
+    }
   }
 
   // MARK: - cache scan
 
   func cachedAudio(id: String) -> CachedAudioInfo? {
     guard let path = cachedAudioPath(id: id) else { return nil }
-    return cachedAudioInfo(id: id, path: path, metadata: readCachedMetadata(id: id))
+    return cachedAudioInfo(id: id, path: path, metadata: readMetadata(id: id))
   }
 
   func cachedAudio(url: String) -> CachedAudioInfo? {
     guard let requestedURL = URL(string: url) else { return nil }
-    for metadataPath in regularFiles(in: cacheDir) where metadataPath.pathExtension == "json" {
-      let id = metadataPath.deletingPathExtension().lastPathComponent
-      guard let metadata = readCachedMetadata(id: id),
-        metadata.webpageURL == requestedURL || metadata.sourceURL == requestedURL,
-        let path = cachedAudioPath(id: id)
+    for metadata in allMetadata() {
+      guard
+        metadata.webpageURL == requestedURL.absoluteString
+          || metadata.sourceURL == requestedURL.absoluteString,
+        let path = cachedAudioPath(id: metadata.id)
       else { continue }
-      return cachedAudioInfo(id: id, path: path, metadata: metadata)
+      return cachedAudioInfo(id: metadata.id, path: path, metadata: metadata)
     }
     return nil
   }
 
-  private func cachedAudioInfo(id: String, path: URL, metadata: TrackMeta?) -> CachedAudioInfo {
+  private func cachedAudioInfo(id: String, path: URL, metadata: StoredMetadata?) -> CachedAudioInfo
+  {
     CachedAudioInfo(
       path: path, id: id, title: metadata?.title, artist: metadata?.artist,
-      webpageURL: metadata?.webpageURL,
-      thumbnailURL: metadata?.thumbnailURL, duration: metadata?.duration)
+      webpageURL: metadata.flatMap { URL(string: $0.webpageURL) },
+      thumbnailURL: metadata?.thumbnailURL.flatMap { URL(string: $0) },
+      duration: metadata?.duration)
   }
 
   private func cachedAudioPath(id: String) -> URL? {
@@ -298,13 +442,21 @@ actor YtDlpClient: YtDlpClientProtocol {
   }
 
   /// Top-level regular files in `dir` (never recurses into subdirectories).
-  private func regularFiles(in dir: URL, keys: [URLResourceKey] = []) -> [URL] {
+  private nonisolated static func regularFiles(
+    in dir: URL, keys: [URLResourceKey] = []
+  ) -> [URL] {
     let entries =
       (try? FileManager.default.contentsOfDirectory(
         at: dir, includingPropertiesForKeys: keys + [.isRegularFileKey])) ?? []
     return entries.filter {
       (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
     }
+  }
+
+  private nonisolated func regularFiles(
+    in dir: URL, keys: [URLResourceKey] = []
+  ) -> [URL] {
+    Self.regularFiles(in: dir, keys: keys)
   }
 
   // MARK: - download

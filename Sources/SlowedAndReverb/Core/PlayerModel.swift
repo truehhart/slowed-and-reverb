@@ -376,15 +376,19 @@ final class PlayerModel {
     await ytdlp.artworkURL(for: track)
   }
 
+  func libraryTracks() async -> [Track] {
+    await ytdlp.libraryTracks()
+  }
+
   // MARK: cache maintenance (settings UI)
 
-  /// Total bytes of cached files (audio, thumbs, meta) in the app cache dir.
+  /// Total bytes of cached audio and artwork in the app cache directory.
   func cacheSize() async -> UInt64 {
     await ytdlp.cacheSize()
   }
 
-  /// Delete all cached files. The playing track keeps its in-memory buffer;
-  /// queued tracks re-download on next play.
+  /// Delete cached media without deleting library metadata. The playing track
+  /// keeps its in-memory buffer; queued tracks re-download on next play.
   func purgeCache() async throws {
     cancelDownloads()
     await ytdlp.cancelActiveDownload()

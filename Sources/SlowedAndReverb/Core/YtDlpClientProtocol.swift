@@ -11,6 +11,7 @@ protocol YtDlpClientProtocol: Sendable {
   func cancelActiveDownload() async
   func cachedAudio(id: String) async -> CachedAudioInfo?
   func cachedAudio(url: String) async -> CachedAudioInfo?
+  func libraryTracks() async -> [Track]
   func artworkURL(for track: Track) async -> URL?
   func cacheSize() async -> UInt64
   func purgeCache() async throws

@@ -44,6 +44,7 @@ final class FakeYtDlpClient: YtDlpClientProtocol, @unchecked Sendable {
     cachedAudioByURL[url]
   }
 
+  func libraryTracks() async -> [Track] { [] }
   func artworkURL(for track: Track) async -> URL? { nil }
   func cacheSize() async -> UInt64 { 0 }
   func purgeCache() async throws {}

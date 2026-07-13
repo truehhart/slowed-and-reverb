@@ -124,14 +124,15 @@ private func canonical(_ url: URL) -> URL {
     let dir = canonical(unresolved)
     defer { try? FileManager.default.removeItem(at: unresolved) }
 
-    let client = YtDlpClient(binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: dir)
-
     let audioPath = dir.appendingPathComponent("ccccccccccc.m4a")
     try Data("audio".utf8).write(to: audioPath)
     // A decoy .json with a non-metadata payload must never be picked as the audio file.
     try Data("not the audio".utf8).write(to: dir.appendingPathComponent("ccccccccccc.json"))
     try JSONSerialization.data(withJSONObject: ["title": "Cached Title"])
       .write(to: dir.appendingPathComponent("ccccccccccc.json"))
+    let client = YtDlpClient(
+      binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: dir,
+      libraryURL: dir.appendingPathComponent("support/Library.sqlite"))
 
     let cached = await client.cachedAudio(id: "ccccccccccc")
     #expect(cached?.path == audioPath)
@@ -148,7 +149,6 @@ private func canonical(_ url: URL) -> URL {
     let dir = canonical(unresolved)
     defer { try? FileManager.default.removeItem(at: unresolved) }
 
-    let client = YtDlpClient(binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: dir)
     let id = "soundcloud-track"
     let webpageURL = "https://soundcloud.com/artist/song"
     let audioPath = dir.appendingPathComponent("\(id).m4a")
@@ -156,6 +156,9 @@ private func canonical(_ url: URL) -> URL {
     try JSONSerialization.data(
       withJSONObject: ["title": "Cached Song", "webpageURL": webpageURL]
     ).write(to: dir.appendingPathComponent("\(id).json"))
+    let client = YtDlpClient(
+      binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: dir,
+      libraryURL: dir.appendingPathComponent("support/Library.sqlite"))
 
     let cached = await client.cachedAudio(url: webpageURL)
     #expect(cached?.path == audioPath)
@@ -171,7 +174,9 @@ private func canonical(_ url: URL) -> URL {
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    let client = YtDlpClient(binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: dir)
+    let client = YtDlpClient(
+      binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: dir,
+      libraryURL: dir.appendingPathComponent("support/Library.sqlite"))
     try Data(repeating: 0, count: 10).write(to: dir.appendingPathComponent("a.m4a"))
     try Data(repeating: 0, count: 20).write(to: dir.appendingPathComponent("b.m4a"))
 
@@ -185,7 +190,40 @@ private func canonical(_ url: URL) -> URL {
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    let client = YtDlpClient(binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: dir)
+    let client = YtDlpClient(
+      binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: dir,
+      libraryURL: dir.appendingPathComponent("support/Library.sqlite"))
     await #expect(throws: (any Error).self) { try await client.purgeCache() }
+  }
+
+  @Test func purgeRemovesAudioButKeepsTheLibrary() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "ytdlp-library-test-\(UUID().uuidString)")
+    let cacheDir = root.appendingPathComponent("com.truehhart.slowed-and-reverb")
+    let libraryURL = root.appendingPathComponent("Library.sqlite")
+    try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let id = "durable-song"
+    let webpageURL = "https://example.test/song"
+    try Data("audio".utf8).write(to: cacheDir.appendingPathComponent("\(id).m4a"))
+    try JSONSerialization.data(
+      withJSONObject: ["title": "Durable Song", "webpageURL": webpageURL]
+    ).write(to: cacheDir.appendingPathComponent("\(id).json"))
+
+    let client = YtDlpClient(
+      binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: cacheDir,
+      libraryURL: libraryURL)
+    #expect(await client.libraryTracks().map(\.title) == ["Durable Song"])
+
+    try await client.purgeCache()
+
+    #expect(await client.cachedAudio(id: id) == nil)
+    let reopened = YtDlpClient(
+      binaryURL: URL(fileURLWithPath: "/usr/bin/true"), cacheDir: cacheDir,
+      libraryURL: libraryURL)
+    let library = await reopened.libraryTracks()
+    #expect(library.map(\.title) == ["Durable Song"])
+    #expect(library.first?.webpageURL.absoluteString == webpageURL)
   }
 }

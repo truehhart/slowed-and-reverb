@@ -5,7 +5,7 @@ let package = Package(
     name: "SlowedAndReverb",
     platforms: [.macOS(.v15)],
     dependencies: [
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.8.0")
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.8.0"),
     ],
     targets: [
         .executableTarget(
