@@ -76,33 +76,6 @@ final class LibraryModel {
     }
   }
 
-  nonisolated static func addedDateLabel(
-    for date: Date, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current
-  ) -> String {
-    let start = calendar.startOfDay(for: date)
-    let today = calendar.startOfDay(for: now)
-    let days = max(0, calendar.dateComponents([.day], from: start, to: today).day ?? 0)
-
-    switch days {
-    case 0:
-      return "Added Today"
-    case 1:
-      return "Added Yesterday"
-    case 2...6:
-      return "Added \(days)d ago"
-    case 7...13:
-      return "Added 1w ago"
-    default:
-      let formatter = DateFormatter()
-      formatter.locale = locale
-      formatter.calendar = calendar
-      formatter.timeZone = calendar.timeZone
-      formatter.dateStyle = .short
-      formatter.timeStyle = .none
-      return "Added \(formatter.string(from: date))"
-    }
-  }
-
   func load(using player: PlayerModel) async {
     isLoading = true
     errorMessage = nil

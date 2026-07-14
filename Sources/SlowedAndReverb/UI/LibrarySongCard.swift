@@ -35,14 +35,9 @@ struct LibrarySongCard: View {
             .font(Theme.mono(8.5))
             .foregroundStyle(Theme.etch)
             .lineLimit(1)
-          Text(LibraryModel.addedDateLabel(for: song.addedAt))
-            .font(Theme.mono(8.5))
-            .foregroundStyle(Theme.labelDim)
-            .lineLimit(1)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .frame(minHeight: 57, alignment: .topLeading)
       }
     } actions: {
       HStack(spacing: 5) {
@@ -69,7 +64,6 @@ struct LibrarySongCard: View {
   private var accessibilityLabel: String {
     let artist = song.track.artist ?? "Unknown artist"
     let duration = song.track.duration.map { ", duration \(TimeFormat.clock($0))" } ?? ""
-    return
-      "\(song.track.title), by \(artist)\(duration), \(LibraryModel.addedDateLabel(for: song.addedAt))"
+    return "\(song.track.title), by \(artist)\(duration)"
   }
 }

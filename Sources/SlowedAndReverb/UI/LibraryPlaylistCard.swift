@@ -27,14 +27,9 @@ struct LibraryPlaylistCard: View {
             .font(Theme.archivo(12, .semiBold))
             .foregroundStyle(Theme.ivory)
             .lineLimit(1)
-          Text(LibraryModel.addedDateLabel(for: playlist.addedAt))
-            .font(Theme.mono(8.5))
-            .foregroundStyle(Theme.labelDim)
-            .lineLimit(1)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .frame(minHeight: 45, alignment: .topLeading)
       }
     } actions: {
       EmptyView()
@@ -46,6 +41,6 @@ struct LibraryPlaylistCard: View {
   }
 
   private var accessibilityLabel: String {
-    "\(playlist.title), \(songCount), \(LibraryModel.addedDateLabel(for: playlist.addedAt))"
+    "\(playlist.title), \(songCount)"
   }
 }

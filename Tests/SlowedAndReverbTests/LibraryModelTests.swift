@@ -120,27 +120,6 @@ private func librarySong(
     #expect(model.playlists.map(\.id) == ["playlist-b", "playlist-a"])
   }
 
-  @Test func formatsRelativeAddedDatesAtDayBoundaries() {
-    var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-    let now = Date(timeIntervalSince1970: 1_768_089_600)
-    let locale = Locale(identifier: "en_US")
-
-    func label(daysAgo: Int) -> String {
-      let date = calendar.date(byAdding: .day, value: -daysAgo, to: now)!
-      return LibraryModel.addedDateLabel(
-        for: date, now: now, calendar: calendar, locale: locale)
-    }
-
-    #expect(label(daysAgo: 0) == "Added Today")
-    #expect(label(daysAgo: 1) == "Added Yesterday")
-    #expect(label(daysAgo: 2) == "Added 2d ago")
-    #expect(label(daysAgo: 6) == "Added 6d ago")
-    #expect(label(daysAgo: 7) == "Added 1w ago")
-    #expect(label(daysAgo: 13) == "Added 1w ago")
-    #expect(label(daysAgo: 14) == "Added 12/28/25")
-  }
-
   @Test func presentsPlaylistTracksMissingFromTheSongLibrary() async {
     let model = LibraryModel()
     let ytdlp = FakeYtDlpClient()
