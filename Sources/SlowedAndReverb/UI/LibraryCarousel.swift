@@ -1,10 +1,10 @@
 import SwiftUI
 
-struct LibraryCarousel<Content: View>: View {
-  let itemCount: Int
-  @ViewBuilder let content: (Int) -> Content
+struct LibraryCarousel<Item: Identifiable, Content: View>: View {
+  let items: [Item]
+  @ViewBuilder let content: (Item) -> Content
 
-  @State private var leadingItem: Int? = 0
+  @State private var leadingItemID: Item.ID?
 
   private let cardWidth: CGFloat = 160
   private let spacing: CGFloat = 12
@@ -15,9 +15,9 @@ struct LibraryCarousel<Content: View>: View {
       ZStack {
         ScrollView(.horizontal) {
           LazyHStack(alignment: .top, spacing: spacing) {
-            ForEach(0..<itemCount, id: \.self) { index in
-              content(index)
-                .id(index)
+            ForEach(items) { item in
+              content(item)
+                .id(item.id)
             }
           }
           .scrollTargetLayout()
@@ -26,31 +26,37 @@ struct LibraryCarousel<Content: View>: View {
         }
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
-        .scrollPosition(id: $leadingItem, anchor: .leading)
+        .scrollPosition(id: $leadingItemID, anchor: .leading)
         .mask(
           edgeMask(
             showsLeading: currentIndex > 0,
-            showsTrailing: currentIndex + visibleCount < itemCount))
+            showsTrailing: currentIndex + visibleCount < items.count))
 
         if currentIndex > 0 {
           chevron(systemName: "chevron.left", label: "Previous card") {
-            leadingItem = currentIndex - 1
+            leadingItemID = items[currentIndex - 1].id
           }
           .frame(maxWidth: .infinity, alignment: .leading)
         }
-        if currentIndex + visibleCount < itemCount {
+        if currentIndex + visibleCount < items.count {
           chevron(systemName: "chevron.right", label: "Next card") {
-            leadingItem = currentIndex + 1
+            leadingItemID = items[currentIndex + 1].id
           }
           .frame(maxWidth: .infinity, alignment: .trailing)
         }
       }
-      .animation(.easeOut(duration: 0.18), value: leadingItem)
+      .animation(.easeOut(duration: 0.18), value: leadingItemID)
+      .onChange(of: items.map(\.id)) {
+        if let leadingItemID, !items.contains(where: { $0.id == leadingItemID }) {
+          self.leadingItemID = items.first?.id
+        }
+      }
     }
   }
 
   private var currentIndex: Int {
-    min(max(leadingItem ?? 0, 0), max(itemCount - 1, 0))
+    guard let leadingItemID else { return 0 }
+    return items.firstIndex(where: { $0.id == leadingItemID }) ?? 0
   }
 
   private func edgeMask(showsLeading: Bool, showsTrailing: Bool) -> some View {

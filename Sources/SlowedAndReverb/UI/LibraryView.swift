@@ -84,7 +84,8 @@ struct LibraryView: View {
         "Your library is empty", detail: "Resolve a song or playlist to add it automatically.",
         icon: "music.note.house")
     } else if model.selectedPlaylist != nil {
-      if model.selectedPlaylistSongs.isEmpty {
+      let songs = model.selectedPlaylistSongs
+      if songs.isEmpty {
         if model.query.isEmpty {
           stateMessage(
             "This playlist is empty", detail: "There are no songs to show yet.",
@@ -93,24 +94,27 @@ struct LibraryView: View {
           stateMessage("No matching songs", detail: "Try a different search.")
         }
       } else {
-        playlistSongCarousel
+        playlistSongCarousel(songs)
       }
     } else if model.section == .songs {
-      if model.songs.isEmpty {
+      let songs = model.songs
+      if songs.isEmpty {
         stateMessage("No matching songs", detail: "Try a different search.")
       } else {
-        songCarousel
+        songCarousel(songs)
       }
-    } else if model.playlists.isEmpty {
-      stateMessage("No matching playlists", detail: "Try a different search.")
     } else {
-      playlistCarousel
+      let playlists = model.playlists
+      if playlists.isEmpty {
+        stateMessage("No matching playlists", detail: "Try a different search.")
+      } else {
+        playlistCarousel(playlists)
+      }
     }
   }
 
-  private var songCarousel: some View {
-    LibraryCarousel(itemCount: model.songs.count) { index in
-      let song = model.songs[index]
+  private func songCarousel(_ songs: [LibrarySong]) -> some View {
+    LibraryCarousel(items: songs) { song in
       LibrarySongCard(
         song: song,
         playAction: { play(song) },
@@ -121,9 +125,8 @@ struct LibraryView: View {
     .frame(maxHeight: .infinity, alignment: .top)
   }
 
-  private var playlistCarousel: some View {
-    LibraryCarousel(itemCount: model.playlists.count) { index in
-      let playlist = model.playlists[index]
+  private func playlistCarousel(_ playlists: [LibraryPlaylist]) -> some View {
+    LibraryCarousel(items: playlists) { playlist in
       LibraryPlaylistCard(playlist: playlist) {
         model.selectedPlaylistID = playlist.id
         model.query = ""
@@ -133,9 +136,8 @@ struct LibraryView: View {
     .frame(maxHeight: .infinity, alignment: .top)
   }
 
-  private var playlistSongCarousel: some View {
-    LibraryCarousel(itemCount: model.selectedPlaylistSongs.count) { index in
-      let song = model.selectedPlaylistSongs[index]
+  private func playlistSongCarousel(_ songs: [LibrarySong]) -> some View {
+    LibraryCarousel(items: songs) { song in
       LibrarySongCard(
         song: song,
         playAction: { play(song) },
