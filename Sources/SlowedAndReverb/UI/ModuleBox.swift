@@ -48,8 +48,11 @@ struct ModuleBox<Accessory: View, Content: View>: View {
     .frame(maxWidth: .infinity, alignment: .top)
     .frame(maxHeight: expands ? .infinity : nil, alignment: .top)
     .faceplateBackground()
-    .compositingGroup()
-    .shadow(color: .black.opacity(0.5), radius: 3, y: 5)
+    .background {
+      RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous)
+        .fill(.black.opacity(0.001))
+        .shadow(color: .black.opacity(0.5), radius: 3, y: 5)
+    }
     .overlay(alignment: .topLeading) { screw.padding(9) }
     .overlay(alignment: .topTrailing) { screw.padding(9) }
     .overlay(alignment: .bottomLeading) { screw.padding(9) }

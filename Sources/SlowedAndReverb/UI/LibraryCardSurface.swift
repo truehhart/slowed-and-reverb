@@ -23,9 +23,6 @@ struct LibraryCardSurface<Content: View, Actions: View>: View {
               hovering || focused ? Theme.accentRingStrong : Theme.line,
               lineWidth: focused ? 2 : 1)
           )
-          .shadow(
-            color: hovering || focused ? Theme.accentGlowSoft : .black.opacity(0.62), radius: 5,
-            y: 3)
       }
       .buttonStyle(CardButtonStyle())
       .focused($focused)
@@ -47,16 +44,6 @@ struct LibraryCardSurface<Content: View, Actions: View>: View {
     LinearGradient(
       colors: [Theme.activeTop, Theme.queueBottom], startPoint: .top, endPoint: .bottom
     )
-    .overlay {
-      MaterialTexture.mottle.resizable(resizingMode: .tile)
-        .opacity(0.12)
-        .blendMode(.softLight)
-    }
-    .overlay {
-      GrainTexture.tile.resizable(resizingMode: .tile)
-        .opacity(0.08)
-        .blendMode(.overlay)
-    }
   }
 
   private struct CardButtonStyle: ButtonStyle {

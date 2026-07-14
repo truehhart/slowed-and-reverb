@@ -10,16 +10,14 @@ struct LibraryArtwork: View {
 
   var body: some View {
     ZStack {
-      fallback
       if let displayedImage {
         Image(nsImage: displayedImage)
           .resizable()
           .scaledToFill()
           .transition(.opacity)
+      } else {
+        fallback
       }
-      GrainTexture.tile.resizable(resizingMode: .tile)
-        .opacity(0.09)
-        .blendMode(.overlay)
     }
     .clipped()
     .task(id: track?.id) {
