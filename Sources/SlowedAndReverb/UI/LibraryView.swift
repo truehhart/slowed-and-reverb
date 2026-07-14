@@ -3,6 +3,7 @@ import SwiftUI
 struct LibraryView: View {
   @Environment(PlayerModel.self) private var player
   @Bindable var model: LibraryModel
+  @State private var isSortMenuExpanded = false
 
   let statusLine: StatusLine
 
@@ -13,8 +14,16 @@ struct LibraryView: View {
           playlistHeader(playlist)
         } else {
           controls
+            .zIndex(1)
         }
-        content
+        ZStack {
+          content
+          if isSortMenuExpanded {
+            Color.black.opacity(0.001)
+              .contentShape(Rectangle())
+              .onTapGesture { isSortMenuExpanded = false }
+          }
+        }
       }
     }
   }
@@ -64,12 +73,20 @@ struct LibraryView: View {
         selection: $model.section
       )
       .frame(width: 180)
+      .simultaneousGesture(TapGesture().onEnded { isSortMenuExpanded = false })
       LibrarySearchField(placeholder: searchPlaceholder, text: $model.query)
-      LibrarySortMenu(options: sortOptions, selection: sortSelection)
-        .frame(width: 118)
+        .simultaneousGesture(TapGesture().onEnded { isSortMenuExpanded = false })
+      LibrarySortMenu(
+        options: sortOptions,
+        selection: sortSelection,
+        isExpanded: $isSortMenuExpanded
+      )
+      .frame(width: 118)
       LibraryDirectionButton(isAscending: sortDirection)
+        .simultaneousGesture(TapGesture().onEnded { isSortMenuExpanded = false })
       LibraryCreatePlaylistButton()
         .frame(width: 132)
+        .simultaneousGesture(TapGesture().onEnded { isSortMenuExpanded = false })
     }
   }
 
