@@ -136,18 +136,19 @@ final class PlayerModel {
     }
 
     setStatus(.resolving)
-    let resolved: [Track]
+    let resolution: ResolvedTracks
     do {
-      resolved = try await ytdlp.resolve(url: url)
+      resolution = try await ytdlp.resolve(url: url)
     } catch {
       guard request == requestToken else { return }
       lastError = String(describing: error)
       setStatus(.failed)
       return
     }
+    observeMetadataUpdates(resolution.metadataUpdates)
     libraryRevision += 1
     guard request == requestToken else { return }
-    queue = resolved
+    queue = resolution.tracks
     index = -1
     guard !queue.isEmpty else {
       setStatus(.idle)
@@ -176,16 +177,18 @@ final class PlayerModel {
       return 1
     }
 
-    let tracks: [Track]
+    let resolution: ResolvedTracks
     do {
-      tracks = try await ytdlp.resolve(url: url)
+      resolution = try await ytdlp.resolve(url: url)
     } catch {
       guard request == requestToken else { return 0 }
       lastError = String(describing: error)
       return 0
     }
+    observeMetadataUpdates(resolution.metadataUpdates)
     libraryRevision += 1
     guard request == requestToken else { return 0 }
+    let tracks = resolution.tracks
     guard !tracks.isEmpty else { return 0 }
     let startFrom = queue.count
     queue.append(contentsOf: tracks)
@@ -488,9 +491,23 @@ final class PlayerModel {
       isPlaying: status == .playing)
   }
 
+  private func observeMetadataUpdates(_ updates: AsyncStream<Track>) {
+    Task { [weak self] in
+      for await track in updates {
+        guard let self else { return }
+        for index in queue.indices where queue[index].id == track.id {
+          queue[index] = track
+        }
+        libraryRevision += 1
+        if currentTrack?.id == track.id { await updateNowPlayingTrack() }
+      }
+    }
+  }
+
   private func refreshCachedTitle(url: String, id: String) async {
-    guard let tracks = try? await ytdlp.resolve(url: url) else { return }
+    guard let resolution = try? await ytdlp.resolve(url: url) else { return }
     libraryRevision += 1
+    let tracks = resolution.tracks
     guard let track = tracks.first(where: { $0.id == id }) ?? tracks.first else { return }
     guard queue.first?.id == id else { return }
     queue[0].title = track.title

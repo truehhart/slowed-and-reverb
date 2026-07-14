@@ -126,7 +126,7 @@ actor YtDlpClient: YtDlpClientProtocol {
 
   // MARK: - resolve
 
-  func resolve(url: String) async throws -> [Track] {
+  func resolve(url: String) async throws -> ResolvedTracks {
     Log.ytdlp.debug("resolve: \(url, privacy: .public)")
     let result = try await run(args: ["-J", "--flat-playlist", "--no-warnings", url])
     guard result.status == 0 else {
@@ -139,8 +139,7 @@ actor YtDlpClient: YtDlpClientProtocol {
     }
     // A playlist carries `entries`; a single video is its own lone entry.
     let entries = root.entries.map { $0.compactMap(\.value) } ?? [root]
-    let flatTracks = entries.compactMap(Self.parseTrack)
-    let tracks = root.entries == nil ? flatTracks : await enrichPlaylistTracks(flatTracks)
+    let tracks = entries.compactMap(Self.parseTrack)
     guard !tracks.isEmpty else { throw YtDlpError.noPlayableTracks }
     let sourceURL = URL(string: url)
     if root.entries != nil, let playlistID = root.id, !playlistID.isEmpty,
@@ -151,38 +150,51 @@ actor YtDlpClient: YtDlpClientProtocol {
     } else {
       persistMetadata(for: tracks, sourceURL: sourceURL)
     }
-    return tracks
+    guard root.entries != nil else { return ResolvedTracks(tracks: tracks) }
+    return ResolvedTracks(tracks: tracks, metadataUpdates: metadataUpdates(for: tracks))
   }
 
-  private func enrichPlaylistTracks(_ tracks: [Track]) async -> [Track] {
-    guard !tracks.isEmpty else { return [] }
-    var enriched = tracks
+  private func metadataUpdates(for tracks: [Track]) -> AsyncStream<Track> {
+    let (stream, continuation) = AsyncStream<Track>.makeStream()
+    Task { [self] in
+      await enrichPlaylistTracks(tracks, continuation: continuation)
+      continuation.finish()
+    }
+    return stream
+  }
+
+  private func enrichPlaylistTracks(
+    _ tracks: [Track], continuation: AsyncStream<Track>.Continuation
+  ) async {
+    guard !tracks.isEmpty else { return }
     let limit = min(Self.playlistMetadataConcurrency, tracks.count)
 
-    await withTaskGroup(of: (Int, Track).self) { group in
+    await withTaskGroup(of: Track?.self) { group in
       var nextIndex = 0
       for _ in 0..<limit {
-        let index = nextIndex
+        let track = tracks[nextIndex]
         nextIndex += 1
         group.addTask { [self] in
-          (index, await enrichPlaylistTrack(tracks[index]))
+          await enrichPlaylistTrack(track)
         }
       }
 
-      for await (index, track) in group {
-        enriched[index] = track
+      for await track in group {
+        if let track {
+          persistMetadata(for: [track], sourceURL: nil)
+          continuation.yield(track)
+        }
         guard nextIndex < tracks.count else { continue }
-        let pendingIndex = nextIndex
+        let pendingTrack = tracks[nextIndex]
         nextIndex += 1
         group.addTask { [self] in
-          (pendingIndex, await enrichPlaylistTrack(tracks[pendingIndex]))
+          await enrichPlaylistTrack(pendingTrack)
         }
       }
     }
-    return enriched
   }
 
-  private func enrichPlaylistTrack(_ fallback: Track) async -> Track {
+  private func enrichPlaylistTrack(_ fallback: Track) async -> Track? {
     do {
       let result = try await run(args: [
         "-J", "--no-playlist", "--no-warnings", fallback.webpageURL.absoluteString,
@@ -193,20 +205,20 @@ actor YtDlpClient: YtDlpClientProtocol {
         Log.ytdlp.error(
           "metadata enrichment failed for \(fallback.id, privacy: .public): \(error, privacy: .public)"
         )
-        return fallback
+        return nil
       }
       guard let entry = try? JSONDecoder().decode(RawEntry.self, from: result.stdout),
         let track = Self.parseTrack(entry), track.id == fallback.id
       else {
         Log.ytdlp.error("invalid metadata response for \(fallback.id, privacy: .public)")
-        return fallback
+        return nil
       }
       return Self.merging(track, fallback: fallback)
     } catch {
       Log.ytdlp.error(
         "metadata enrichment failed for \(fallback.id, privacy: .public): \(error, privacy: .public)"
       )
-      return fallback
+      return nil
     }
   }
 

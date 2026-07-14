@@ -5,7 +5,7 @@ import Foundation
 /// `async`: the production client is an actor, so all its filesystem/process
 /// I/O runs off the main actor.
 protocol YtDlpClientProtocol: Sendable {
-  func resolve(url: String) async throws -> [Track]
+  func resolve(url: String) async throws -> ResolvedTracks
   func download(url: String, id: String, progress: @escaping @Sendable (Double) -> Void)
     async throws -> URL
   func cancelActiveDownload() async

@@ -7,6 +7,7 @@ import Foundation
 final class FakeYtDlpClient: YtDlpClientProtocol, @unchecked Sendable {
   var resolveHandler: ((String) throws -> [Track])?
   var asyncResolveHandler: ((String) async throws -> [Track])?
+  var metadataUpdates: AsyncStream<Track>?
   var downloadHandler: ((String, String) async throws -> URL)?
   var cachedAudioByID: [String: CachedAudioInfo] = [:]
   var cachedAudioByURL: [String: CachedAudioInfo] = [:]
@@ -20,11 +21,18 @@ final class FakeYtDlpClient: YtDlpClientProtocol, @unchecked Sendable {
   private(set) var removedSongIDs: [String] = []
   private(set) var removedPlaylistIDs: [String] = []
 
-  func resolve(url: String) async throws -> [Track] {
+  func resolve(url: String) async throws -> ResolvedTracks {
     resolveCalls.append(url)
-    if let asyncResolveHandler { return try await asyncResolveHandler(url) }
-    guard let resolveHandler else { return [] }
-    return try resolveHandler(url)
+    let tracks: [Track]
+    if let asyncResolveHandler {
+      tracks = try await asyncResolveHandler(url)
+    } else if let resolveHandler {
+      tracks = try resolveHandler(url)
+    } else {
+      tracks = []
+    }
+    guard let metadataUpdates else { return ResolvedTracks(tracks: tracks) }
+    return ResolvedTracks(tracks: tracks, metadataUpdates: metadataUpdates)
   }
 
   func download(url: String, id: String, progress: @escaping @Sendable (Double) -> Void)

@@ -140,6 +140,25 @@ private func makeTrack(_ id: String, title: String? = nil) -> Track {
     #expect(player.libraryRevision == 1)
   }
 
+  @Test func appliesBackgroundMetadataUpdatesToTheQueueAndLibraryRevision() async {
+    let ytdlp = FakeYtDlpClient()
+    let player = PlayerModel(ytdlp: ytdlp, audioEngine: FakeAudioEngine())
+    let track = makeTrack("aaaaaaaaaaa")
+    let (updates, continuation) = AsyncStream<Track>.makeStream()
+    ytdlp.resolveHandler = { _ in [track] }
+    ytdlp.metadataUpdates = updates
+
+    await player.add(url: "https://youtube.com/playlist?list=demo")
+
+    #expect(player.queue.first?.artist == nil)
+    var enriched = track
+    enriched.artist = "Artist"
+    continuation.yield(enriched)
+    continuation.finish()
+    await waitUntil(player.libraryRevision == 2)
+    #expect(player.queue.first?.artist == "Artist")
+  }
+
   @Test func onlyStartsPlaybackWhenNothingIsSelectedYet() async {
     let ytdlp = FakeYtDlpClient()
     let engine = FakeAudioEngine()

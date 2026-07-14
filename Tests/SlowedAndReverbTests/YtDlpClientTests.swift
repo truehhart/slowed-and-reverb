@@ -129,14 +129,19 @@ private func canonical(_ url: URL) -> URL {
       binaryURL: fixture, cacheDir: root.appendingPathComponent("cache"),
       libraryURL: root.appendingPathComponent("Library.store"))
 
-    let tracks = try await client.resolve(url: "https://example.test/playlist")
+    let resolution = try await client.resolve(url: "https://example.test/playlist")
 
-    #expect(tracks.map(\.id) == ["aaaaaaaaaaa", "bbbbbbbbbbb"])
-    #expect(tracks.map(\.title) == ["One", "Two"])
-    #expect(tracks.map(\.artist) == ["Artist A", "Artist B"])
-    #expect(tracks.map(\.duration) == [123, 234])
+    #expect(resolution.tracks.map(\.id) == ["aaaaaaaaaaa", "bbbbbbbbbbb"])
+    #expect(resolution.tracks.map(\.artist) == [nil, nil])
+    var updates: [Track] = []
+    for await track in resolution.metadataUpdates {
+      updates.append(track)
+    }
+    #expect(Set(updates.map(\.artist)) == ["Artist A", "Artist B"])
     let playlist = await client.librarySnapshot().playlists.first
+    #expect(playlist?.tracks.map(\.title) == ["One", "Two"])
     #expect(playlist?.tracks.map(\.artist) == ["Artist A", "Artist B"])
+    #expect(playlist?.tracks.map(\.duration) == [123, 234])
   }
 }
 
