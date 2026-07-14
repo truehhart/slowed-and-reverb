@@ -9,6 +9,7 @@ final class FakeYtDlpClient: YtDlpClientProtocol, @unchecked Sendable {
   var asyncResolveHandler: ((String) async throws -> [Track])?
   var metadataUpdates: AsyncStream<Track>?
   var downloadHandler: ((String, String) async throws -> URL)?
+  var downloadProgressValues: [Double] = []
   var cachedAudioByID: [String: CachedAudioInfo] = [:]
   var cachedAudioByURL: [String: CachedAudioInfo] = [:]
   var snapshot = LibrarySnapshot.empty
@@ -35,10 +36,13 @@ final class FakeYtDlpClient: YtDlpClientProtocol, @unchecked Sendable {
     return ResolvedTracks(tracks: tracks, metadataUpdates: metadataUpdates)
   }
 
-  func download(url: String, id: String, progress: @escaping @Sendable (Double) -> Void)
+  func download(url: String, id: String, progress: @escaping @Sendable (Double) async -> Void)
     async throws -> URL
   {
     downloadCalls.append((url, id))
+    for value in downloadProgressValues {
+      await progress(value)
+    }
     guard let downloadHandler else {
       return URL(fileURLWithPath: "/cache/\(id).m4a")
     }

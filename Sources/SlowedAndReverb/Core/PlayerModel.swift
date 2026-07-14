@@ -594,11 +594,7 @@ final class PlayerModel {
       defer { self.finishDownload(id: id, trackID: track.id) }
       let path = try await ytdlp.download(url: track.webpageURL.absoluteString, id: track.id) {
         [weak self] percent in
-        Task { @MainActor in
-          guard let self, self.activeDownloadIDs.contains(id), self.progressDownloadID == id
-          else { return }
-          self.downloadProgress = percent
-        }
+        await self?.updateDownloadProgress(percent, id: id)
       }
       try Task.checkCancellation()
       self.pathCache[track.id] = path
@@ -607,6 +603,11 @@ final class PlayerModel {
     let handle = DownloadHandle(id: id, task: task)
     downloadTasks[track.id] = handle
     return handle
+  }
+
+  private func updateDownloadProgress(_ percent: Double, id: UUID) {
+    guard activeDownloadIDs.contains(id), progressDownloadID == id else { return }
+    downloadProgress = percent
   }
 
   private func finishDownload(id: UUID, trackID: String) {

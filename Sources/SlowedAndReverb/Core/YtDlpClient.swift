@@ -677,7 +677,7 @@ actor YtDlpClient: YtDlpClientProtocol {
     }
   }
 
-  func download(url: String, id: String, progress: @escaping @Sendable (Double) -> Void)
+  func download(url: String, id: String, progress: @escaping @Sendable (Double) async -> Void)
     async throws -> URL
   {
     // Bump first: this call is now the current selection, even a cache hit
@@ -724,7 +724,7 @@ actor YtDlpClient: YtDlpClientProtocol {
           break
         }
         if let percent = Self.parsePercent(line) {
-          progress(percent)
+          await progress(percent)
           continue
         }
         let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -740,7 +740,7 @@ actor YtDlpClient: YtDlpClientProtocol {
           break
         }
         if let percent = Self.parsePercent(line) {
-          progress(percent)
+          await progress(percent)
         } else if !line.trimmingCharacters(in: .whitespaces).isEmpty {
           errorLines.withLock { $0.append(line) }
         }

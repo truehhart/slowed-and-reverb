@@ -6,7 +6,7 @@ import Foundation
 /// I/O runs off the main actor.
 protocol YtDlpClientProtocol: Sendable {
   func resolve(url: String) async throws -> ResolvedTracks
-  func download(url: String, id: String, progress: @escaping @Sendable (Double) -> Void)
+  func download(url: String, id: String, progress: @escaping @Sendable (Double) async -> Void)
     async throws -> URL
   func cancelActiveDownload() async
   func cachedAudio(id: String) async -> CachedAudioInfo?

@@ -13,6 +13,24 @@ private func makeTrack(_ id: String, title: String? = nil) -> Track {
 }
 
 @Suite struct PlayIndexTests {
+  @Test func publishesProgressWhileTheDownloadIsStillRunning() async {
+    let ytdlp = FakeYtDlpClient()
+    let player = PlayerModel(ytdlp: ytdlp, audioEngine: FakeAudioEngine())
+    let gate = Deferred<URL>()
+    ytdlp.resolveHandler = { _ in [makeTrack("aaaaaaaaaaa")] }
+    ytdlp.downloadProgressValues = [12.5, 47.0]
+    ytdlp.downloadHandler = { _, _ in try await gate.value }
+
+    let loadTask = Task { await player.load(url: "https://youtu.be/aaaaaaaaaaa") }
+    await waitUntil(player.downloadProgress == 47)
+
+    #expect(player.isDownloading)
+    #expect(player.downloadProgress == 47)
+
+    gate.resolve(URL(fileURLWithPath: "/cache/aaaaaaaaaaa.m4a"))
+    await loadTask.value
+  }
+
   @Test func doesNotPlayAnOlderDownloadAfterANewerSelectionWins() async {
     let ytdlp = FakeYtDlpClient()
     let engine = FakeAudioEngine()
