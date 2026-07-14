@@ -36,7 +36,7 @@ final class KeyEventMonitor {
         URLParsing.looksLikeURL(text)
       else { return event }
       queueBox.urlText = text
-      Task { await queueBox.submit(.add, player: player, status: statusLine) }
+      Task { await queueBox.submit(player: player, status: statusLine) }
       return nil
     }
     guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else {

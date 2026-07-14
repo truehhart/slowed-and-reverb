@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Right rack unit: "up next" — hold-to-clear, import (replace queue), the
-/// queue rows, and the add row (a queue-item-shaped input with a plus).
+/// Right rack unit: "up next" with hold-to-clear, queue rows, and an add row.
 struct QueueModule: View {
   @Environment(PlayerModel.self) private var player
   let queueBox: QueueBoxModel
@@ -12,17 +11,12 @@ struct QueueModule: View {
   var body: some View {
     @Bindable var queueBox = queueBox
     return ModuleBox("up next") {
-      HStack(spacing: 6) {
-        HoldToDeleteButton(
-          enabled: !player.queue.isEmpty,
-          accessibilityLabel: "Clear queue",
-          help: "Hold to clear the queue"
-        ) {
-          Task { await player.clear() }
-        }
-        ImportButton(disabled: queueBox.isSubmitting) {
-          Task { await queueBox.submit(.replace, player: player, status: statusLine) }
-        }
+      HoldToDeleteButton(
+        enabled: !player.queue.isEmpty,
+        accessibilityLabel: "Clear queue",
+        help: "Hold to clear the queue"
+      ) {
+        Task { await player.clear() }
       }
       .fixedSize()
     } content: {
@@ -67,7 +61,7 @@ struct QueueModule: View {
       .tint(Theme.burgundy)
       .focused($addFieldFocused)
       .onSubmit {
-        Task { await queueBox.submit(.add, player: player, status: statusLine) }
+        Task { await queueBox.submit(player: player, status: statusLine) }
       }
     }
     .padding(.vertical, 11)
@@ -217,56 +211,6 @@ private struct QueueRowButtonStyle: ButtonStyle {
       .shadow(color: isActive ? Theme.accentGlow.opacity(0.7) : .clear, radius: 7)
       .contentShape(Rectangle())
       .scaleEffect(configuration.isPressed ? 0.98 : 1)
-      .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
-  }
-}
-
-/// Import — replaces the queue with the pasted link's tracks.
-private struct ImportButton: View {
-  let disabled: Bool
-  let action: () -> Void
-
-  @State private var hovering = false
-
-  var body: some View {
-    Button(action: action) {
-      HStack(spacing: 6) {
-        IconView(glyph: .importDown, size: 13)
-        Text("import")
-          .font(Theme.mono(10.6, bold: true))
-          .kerning(10.6 * 0.14)
-          .textCase(.uppercase)
-      }
-      .padding(.vertical, 5)
-      .padding(.horizontal, 9)
-    }
-    .buttonStyle(ImportButtonStyle(disabled: disabled, hovering: hovering))
-    .disabled(disabled)
-    .onHover { hovering = $0 }
-    .accessibilityLabel("Import")
-    .help("import — replaces the queue")
-  }
-}
-
-private struct ImportButtonStyle: ButtonStyle {
-  let disabled: Bool
-  let hovering: Bool
-
-  func makeBody(configuration: Configuration) -> some View {
-    let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
-    return configuration.label
-      .foregroundStyle(hovering && !disabled ? Theme.amber : Theme.labelDim)
-      .background {
-        shape.fill(
-          hovering && !disabled
-            ? Color(red: 1, green: 0.94, blue: 0.86).opacity(0.03) : .clear)
-      }
-      .overlay {
-        shape.strokeBorder(
-          hovering && !disabled ? Theme.amberGlow : Theme.lineSoft, lineWidth: 1)
-      }
-      .opacity(disabled ? 0.5 : 1)
-      .scaleEffect(configuration.isPressed ? 0.96 : 1)
       .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
   }
 }
