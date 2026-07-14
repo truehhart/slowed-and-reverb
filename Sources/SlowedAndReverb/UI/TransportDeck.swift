@@ -47,8 +47,12 @@ struct TransportDeck: View {
           scrubValue = player.currentTime
           scrubbing = true
         } else {
-          Task { await player.seek(to: scrubValue) }
-          scrubbing = false
+          let target = scrubValue
+          Task {
+            await player.seek(to: target)
+            scrubValue = player.currentTime
+            scrubbing = false
+          }
         }
       }
       Text("-" + TimeFormat.clock((player.duration - current) / speed))
