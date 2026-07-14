@@ -18,9 +18,6 @@ struct PlateView: View {
     .padding(.trailing, Theme.pad + 8)
     .topChromeBackground()
     .contentShape(Rectangle())
-    // The plate is the window's drag handle. Its own buttons keep priority,
-    // so dragging empty plate space moves the window without eating clicks.
-    .gesture(WindowDragGesture())
   }
 
   private var brand: some View {

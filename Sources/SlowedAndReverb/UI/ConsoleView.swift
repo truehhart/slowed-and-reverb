@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The whole tape console: integrated chrome, active workspace, and transport deck.
@@ -49,6 +50,10 @@ struct ConsoleView: View {
     }
     .frame(width: 980, height: 640)
     .consoleChassisBackground()
+    .gesture(
+      WindowDragGesture()
+        .simultaneously(with: TapGesture().onEnded { NSApp.keyWindow?.makeFirstResponder(nil) })
+    )
     .overlay { vignette.allowsHitTesting(false) }
     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     .background(WindowConfigurator())
