@@ -13,10 +13,10 @@ struct LibraryView: View {
       VStack(spacing: 10) {
         if let playlist = model.selectedPlaylist {
           playlistHeader(playlist)
+          LibrarySearchField(placeholder: "Search this playlist", text: $model.query)
         } else {
-          sectionHeader
+          controls
         }
-        controls
         content
       }
     }
@@ -57,208 +57,175 @@ struct LibraryView: View {
     }
   }
 
-  private var sectionHeader: some View {
-    HStack {
-      Picker("Library section", selection: $model.section) {
-        ForEach(LibraryModel.Section.allCases, id: \.self) { section in
-          Text(section.rawValue.capitalized).tag(section)
-        }
-      }
-      .pickerStyle(.segmented)
-      .frame(width: 220)
-      Spacer()
-      Text(resultCount)
-        .font(Theme.mono(10))
-        .foregroundStyle(Theme.dim)
-    }
-  }
-
   private func playlistHeader(_ playlist: LibraryPlaylist) -> some View {
     HStack(spacing: 10) {
-      Button {
+      LibraryBackButton {
         model.selectedPlaylistID = nil
         model.query = ""
-      } label: {
-        Label("Back", systemImage: "chevron.left")
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel("Back to playlists")
-      Text(playlist.title)
-        .font(Theme.archivo(15, .bold))
-        .lineLimit(1)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(playlist.title)
+          .font(Theme.archivo(14, .bold))
+          .foregroundStyle(Theme.ivory)
+          .lineLimit(1)
+        Text(playlistSongCount(playlist))
+          .font(Theme.mono(8.5))
+          .foregroundStyle(Theme.labelDim)
+      }
       Spacer()
-      Button("Play All") {
+      LibraryHeaderActionButton("Play All", systemImage: "play.fill") {
         Task {
           await player.playLibraryTracks(playlist.tracks)
           statusLine.show("Playing \(playlist.title)")
         }
       }
-      Button("Add All") {
+      .disabled(playlist.tracks.isEmpty)
+      LibraryHeaderActionButton("Add All", systemImage: "text.badge.plus") {
         player.addLibraryTracks(playlist.tracks)
         statusLine.show("Added \(playlist.tracks.count) songs to queue")
       }
-      Button("Remove", role: .destructive) { playlistToRemove = playlist }
-        .accessibilityLabel("Remove playlist \(playlist.title)")
+      .disabled(playlist.tracks.isEmpty)
+      LibraryHeaderActionButton(
+        "Remove", systemImage: "trash", isDestructive: true
+      ) {
+        playlistToRemove = playlist
+      }
     }
   }
 
   private var controls: some View {
     HStack(spacing: 8) {
-      TextField(
-        model.selectedPlaylist == nil ? "Search library" : "Search playlist", text: $model.query
+      SegmentedSelector(
+        options: LibraryModel.Section.allCases.map { ($0.rawValue.capitalized, $0) },
+        selection: $model.section
       )
-      .textFieldStyle(.roundedBorder)
-      .accessibilityLabel("Search library")
-      if model.selectedPlaylist == nil {
-        Picker("Sort", selection: sortSelection) {
-          if model.section == .songs {
-            ForEach(LibraryModel.SongSort.allCases, id: \.self) {
-              Text($0.rawValue).tag($0.rawValue)
-            }
-          } else {
-            ForEach(LibraryModel.PlaylistSort.allCases, id: \.self) {
-              Text($0.rawValue).tag($0.rawValue)
-            }
-          }
-        }
-        .frame(width: 130)
-        Button {
-          model.isAscending.toggle()
-        } label: {
-          Image(systemName: model.isAscending ? "arrow.up" : "arrow.down")
-        }
-        .accessibilityLabel(model.isAscending ? "Sort ascending" : "Sort descending")
-      }
+      .frame(width: 180)
+      LibrarySearchField(placeholder: searchPlaceholder, text: $model.query)
+      LibrarySortMenu(options: sortOptions, selection: sortSelection)
+        .frame(width: 118)
+      LibraryDirectionButton(isAscending: sortDirection)
+      LibraryCreatePlaylistButton()
+        .frame(width: 132)
     }
   }
 
   @ViewBuilder private var content: some View {
     if model.isLoading {
-      Spacer()
-      ProgressView("Loading library")
-      Spacer()
+      stateMessage("Loading library", detail: "Reading your saved music.", icon: "waveform")
     } else if let error = model.errorMessage {
-      stateMessage("Library unavailable", detail: error)
+      stateMessage("Library unavailable", detail: error, icon: "exclamationmark.triangle")
     } else if model.snapshot.songs.isEmpty && model.snapshot.playlists.isEmpty {
       stateMessage(
-        "Your library is empty", detail: "Resolve a song or playlist to add it automatically.")
+        "Your library is empty", detail: "Resolve a song or playlist to add it automatically.",
+        icon: "music.note.house")
     } else if model.selectedPlaylist != nil {
-      trackList(model.selectedPlaylistTracks)
+      if model.selectedPlaylistSongs.isEmpty {
+        if model.query.isEmpty {
+          stateMessage(
+            "This playlist is empty", detail: "There are no songs to show yet.",
+            icon: "music.note.list")
+        } else {
+          stateMessage("No matching songs", detail: "Try a different search.")
+        }
+      } else {
+        playlistSongCarousel
+      }
     } else if model.section == .songs {
       if model.songs.isEmpty {
         stateMessage("No matching songs", detail: "Try a different search.")
       } else {
-        songList
+        songCarousel
       }
     } else if model.playlists.isEmpty {
       stateMessage("No matching playlists", detail: "Try a different search.")
     } else {
-      playlistList
+      playlistCarousel
     }
   }
 
-  private var songList: some View {
-    List(model.songs) { song in
-      HStack {
-        Button {
-          Task { await player.playLibraryTracks([song.track]) }
-        } label: {
-          songLabel(song.track)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Play \(song.track.title) now")
-        Spacer()
-        Button("Add") {
-          player.addLibraryTracks([song.track])
-          statusLine.show("Added \(song.track.title) to queue")
-        }
-        .accessibilityLabel("Add \(song.track.title) to queue")
-        Button(role: .destructive) {
-          songToRemove = song
-        } label: {
-          Image(systemName: "trash")
-        }
-        .accessibilityLabel("Remove \(song.track.title)")
-      }
-      .contentShape(Rectangle())
-      .accessibilityElement(children: .contain)
+  private var songCarousel: some View {
+    LibraryCarousel(itemCount: model.songs.count) { index in
+      let song = model.songs[index]
+      LibrarySongCard(
+        song: song,
+        playAction: { play(song) },
+        queueAction: { addToQueue(song) },
+        removeAction: { songToRemove = song })
     }
-    .listStyle(.plain)
+    .frame(height: 220)
+    .frame(maxHeight: .infinity, alignment: .top)
   }
 
-  private var playlistList: some View {
-    List(model.playlists) { playlist in
-      Button {
+  private var playlistCarousel: some View {
+    LibraryCarousel(itemCount: model.playlists.count) { index in
+      let playlist = model.playlists[index]
+      LibraryPlaylistCard(playlist: playlist) {
         model.selectedPlaylistID = playlist.id
         model.query = ""
-      } label: {
-        HStack {
-          VStack(alignment: .leading, spacing: 2) {
-            Text(playlist.title).font(Theme.archivo(13, .bold))
-            Text(playlist.addedAt, style: .date)
-              .font(Theme.mono(9)).foregroundStyle(Theme.dim)
-          }
-          Spacer()
-          Text("\(playlist.tracks.count) songs")
-            .font(Theme.mono(10)).foregroundStyle(Theme.dim)
-          Image(systemName: "chevron.right")
-        }
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .accessibilityLabel("\(playlist.title), \(playlist.tracks.count) songs")
-    }
-    .listStyle(.plain)
-  }
-
-  private func trackList(_ tracks: [Track]) -> some View {
-    Group {
-      if tracks.isEmpty {
-        stateMessage("No matching songs", detail: "Try a different search.")
-      } else {
-        List(Array(tracks.enumerated()), id: \.element.id) { position, track in
-          Button {
-            Task { await player.playLibraryTracks([track]) }
-          } label: {
-            HStack {
-              Text("\(position + 1)").frame(width: 24, alignment: .trailing)
-                .font(Theme.mono(10)).foregroundStyle(Theme.dim)
-              songLabel(track)
-              Spacer()
-              Button("Add") { player.addLibraryTracks([track]) }
-                .accessibilityLabel("Add \(track.title) to queue")
-            }
-            .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .accessibilityLabel("Play \(track.title)")
-        }
-        .listStyle(.plain)
       }
     }
+    .frame(height: 220)
+    .frame(maxHeight: .infinity, alignment: .top)
   }
 
-  private func songLabel(_ track: Track) -> some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(track.title).font(Theme.archivo(12.5, .bold)).lineLimit(1)
-      Text(track.artist ?? "Unknown artist")
-        .font(Theme.mono(9)).foregroundStyle(Theme.dim).lineLimit(1)
+  private var playlistSongCarousel: some View {
+    LibraryCarousel(itemCount: model.selectedPlaylistSongs.count) { index in
+      let song = model.selectedPlaylistSongs[index]
+      LibrarySongCard(
+        song: song,
+        playAction: { play(song) },
+        queueAction: { addToQueue(song) },
+        removeAction: nil)
+    }
+    .frame(height: 220)
+    .frame(maxHeight: .infinity, alignment: .top)
+  }
+
+  private func playlistSongCount(_ playlist: LibraryPlaylist) -> String {
+    "\(playlist.tracks.count) \(playlist.tracks.count == 1 ? "song" : "songs")"
+  }
+
+  private func play(_ song: LibrarySong) {
+    Task {
+      await player.playLibraryTracks([song.track])
+      statusLine.show("Playing \(song.track.title)")
     }
   }
 
-  private func stateMessage(_ title: String, detail: String) -> some View {
+  private func addToQueue(_ song: LibrarySong) {
+    player.addLibraryTracks([song.track])
+    statusLine.show("Added \(song.track.title) to queue")
+  }
+
+  private func stateMessage(
+    _ title: String, detail: String, icon: String = "magnifyingglass"
+  ) -> some View {
     VStack(spacing: 6) {
       Spacer()
+      Image(systemName: icon)
+        .font(.system(size: 22, weight: .medium))
+        .foregroundStyle(Theme.burgundy)
+        .padding(.bottom, 3)
       Text(title).font(Theme.archivo(14, .bold))
-      Text(detail).font(Theme.archivo(11, .medium)).foregroundStyle(Theme.dim)
+      Text(detail)
+        .font(Theme.archivo(11, .medium))
+        .foregroundStyle(Theme.dim)
+        .multilineTextAlignment(.center)
+        .lineLimit(3)
       Spacer()
     }
     .frame(maxWidth: .infinity)
   }
 
-  private var resultCount: String {
-    let count = model.section == .songs ? model.songs.count : model.playlists.count
-    return "\(count) \(model.section.rawValue)"
+  private var searchPlaceholder: String {
+    model.section == .songs ? "Search songs or artists" : "Search playlists"
+  }
+
+  private var sortOptions: [String] {
+    if model.section == .songs {
+      return LibraryModel.SongSort.allCases.map(\.rawValue)
+    }
+    return LibraryModel.PlaylistSort.allCases.map(\.rawValue)
   }
 
   private var sortSelection: Binding<String> {
@@ -269,6 +236,18 @@ struct LibraryView: View {
         model.songSort = sort
       } else if let sort = LibraryModel.PlaylistSort(rawValue: value) {
         model.playlistSort = sort
+      }
+    }
+  }
+
+  private var sortDirection: Binding<Bool> {
+    Binding {
+      model.section == .songs ? model.songSortAscending : model.playlistSortAscending
+    } set: { value in
+      if model.section == .songs {
+        model.songSortAscending = value
+      } else {
+        model.playlistSortAscending = value
       }
     }
   }

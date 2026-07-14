@@ -26,12 +26,19 @@ final class LibraryModel {
   var section = Section.songs
   var query = ""
   var songSort = SongSort.dateAdded {
-    didSet { isAscending = songSort != .dateAdded }
+    didSet {
+      guard songSort != oldValue else { return }
+      songSortAscending = songSort != .dateAdded
+    }
   }
   var playlistSort = PlaylistSort.dateAdded {
-    didSet { isAscending = playlistSort != .dateAdded }
+    didSet {
+      guard playlistSort != oldValue else { return }
+      playlistSortAscending = playlistSort != .dateAdded
+    }
   }
-  var isAscending = false
+  var songSortAscending = false
+  var playlistSortAscending = false
   var selectedPlaylistID: String?
 
   var selectedPlaylist: LibraryPlaylist? {
@@ -56,10 +63,42 @@ final class LibraryModel {
     return matching.sorted(by: comparePlaylists)
   }
 
-  var selectedPlaylistTracks: [Track] {
+  var selectedPlaylistSongs: [LibrarySong] {
     guard let selectedPlaylist else { return [] }
-    return selectedPlaylist.tracks.filter { track in
-      query.isEmpty || Self.matches(query, in: [track.title, track.artist])
+    let songsByID = Dictionary(uniqueKeysWithValues: snapshot.songs.map { ($0.id, $0) })
+    return selectedPlaylist.tracks.compactMap { track in
+      guard query.isEmpty || Self.matches(query, in: [track.title, track.artist]) else {
+        return nil
+      }
+      return songsByID[track.id]
+        ?? LibrarySong(track: track, addedAt: selectedPlaylist.addedAt)
+    }
+  }
+
+  nonisolated static func addedDateLabel(
+    for date: Date, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current
+  ) -> String {
+    let start = calendar.startOfDay(for: date)
+    let today = calendar.startOfDay(for: now)
+    let days = max(0, calendar.dateComponents([.day], from: start, to: today).day ?? 0)
+
+    switch days {
+    case 0:
+      return "Added Today"
+    case 1:
+      return "Added Yesterday"
+    case 2...6:
+      return "Added \(days)d ago"
+    case 7...13:
+      return "Added 1w ago"
+    default:
+      let formatter = DateFormatter()
+      formatter.locale = locale
+      formatter.calendar = calendar
+      formatter.timeZone = calendar.timeZone
+      formatter.dateStyle = .short
+      formatter.timeStyle = .none
+      return "Added \(formatter.string(from: date))"
     }
   }
 
@@ -77,7 +116,6 @@ final class LibraryModel {
       await load(using: player)
       return true
     } catch {
-      errorMessage = String(describing: error)
       return false
     }
   }
@@ -89,7 +127,6 @@ final class LibraryModel {
       await load(using: player)
       return true
     } catch {
-      errorMessage = String(describing: error)
       return false
     }
   }
@@ -115,7 +152,9 @@ final class LibraryModel {
       comparison = textCompare(lhs.track.artist ?? "", rhs.track.artist ?? "")
     }
     if comparison != .orderedSame {
-      return isAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+      return
+        songSortAscending
+        ? comparison == .orderedAscending : comparison == .orderedDescending
     }
     let titleComparison = textCompare(lhs.track.title, rhs.track.title)
     if titleComparison != .orderedSame { return titleComparison == .orderedAscending }
@@ -127,7 +166,9 @@ final class LibraryModel {
       playlistSort == .dateAdded
       ? lhs.addedAt.compare(rhs.addedAt) : textCompare(lhs.title, rhs.title)
     if comparison != .orderedSame {
-      return isAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+      return
+        playlistSortAscending
+        ? comparison == .orderedAscending : comparison == .orderedDescending
     }
     let nameComparison = textCompare(lhs.title, rhs.title)
     if nameComparison != .orderedSame { return nameComparison == .orderedAscending }

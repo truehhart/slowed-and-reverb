@@ -30,18 +30,18 @@ private func librarySong(
     let model = await populatedModel()
 
     #expect(model.songs.map(\.id) == ["b", "c", "a"])
-    model.isAscending = true
+    model.songSortAscending = true
     #expect(model.songs.map(\.id) == ["a", "b", "c"])
 
     model.songSort = .title
-    #expect(model.isAscending)
+    #expect(model.songSortAscending)
     #expect(model.songs.map(\.id) == ["b", "a", "c"])
-    model.isAscending = false
+    model.songSortAscending = false
     #expect(model.songs.map(\.id) == ["c", "a", "b"])
 
     model.songSort = .artist
     #expect(model.songs.map(\.id) == ["c", "b", "a"])
-    model.isAscending = false
+    model.songSortAscending = false
     #expect(model.songs.map(\.id) == ["a", "b", "c"])
   }
 
@@ -71,17 +71,84 @@ private func librarySong(
     model.query = ""
     model.playlistSort = .name
     #expect(model.playlists.map(\.id) == ["playlist-a", "playlist-b"])
-    model.isAscending = false
+    model.playlistSortAscending = false
     #expect(model.playlists.map(\.id) == ["playlist-b", "playlist-a"])
 
     model.selectedPlaylistID = "playlist-a"
-    #expect(model.selectedPlaylistTracks.map(\.id) == ["c", "a"])
+    #expect(model.selectedPlaylistSongs.map(\.id) == ["c", "a"])
     model.query = "ete"
-    #expect(model.selectedPlaylistTracks.map(\.id) == ["a"])
+    #expect(model.selectedPlaylistSongs.map(\.id) == ["a"])
   }
 
-  @Test func refreshesSnapshotAfterRemoval() async {
+  @Test func keepsSongAndPlaylistSortDirectionsIndependent() async {
     let model = await populatedModel()
+
+    model.songSort = .title
+    model.songSortAscending = false
+    model.section = .playlists
+    model.playlistSort = .name
+
+    #expect(model.songSortAscending == false)
+    #expect(model.playlistSortAscending == true)
+
+    model.playlistSortAscending = false
+    model.section = .songs
+    #expect(model.songSortAscending == false)
+  }
+
+  @Test func defaultsBothSectionsToNewestFirst() async {
+    let model = await populatedModel()
+
+    #expect(model.songSort == .dateAdded)
+    #expect(model.songSortAscending == false)
+    #expect(model.songs.map(\.id) == ["b", "c", "a"])
+    #expect(model.playlistSort == .dateAdded)
+    #expect(model.playlistSortAscending == false)
+    #expect(model.playlists.map(\.id) == ["playlist-b", "playlist-a"])
+  }
+
+  @Test func formatsRelativeAddedDatesAtDayBoundaries() {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    let now = Date(timeIntervalSince1970: 1_768_089_600)
+    let locale = Locale(identifier: "en_US")
+
+    func label(daysAgo: Int) -> String {
+      let date = calendar.date(byAdding: .day, value: -daysAgo, to: now)!
+      return LibraryModel.addedDateLabel(
+        for: date, now: now, calendar: calendar, locale: locale)
+    }
+
+    #expect(label(daysAgo: 0) == "Added Today")
+    #expect(label(daysAgo: 1) == "Added Yesterday")
+    #expect(label(daysAgo: 2) == "Added 2d ago")
+    #expect(label(daysAgo: 6) == "Added 6d ago")
+    #expect(label(daysAgo: 7) == "Added 1w ago")
+    #expect(label(daysAgo: 13) == "Added 1w ago")
+    #expect(label(daysAgo: 14) == "Added 12/28/25")
+  }
+
+  @Test func presentsPlaylistTracksMissingFromTheSongLibrary() async {
+    let model = LibraryModel()
+    let ytdlp = FakeYtDlpClient()
+    let track = Track(
+      id: "playlist-only", title: "Playlist Only", artist: "Artist",
+      webpageURL: URL(string: "https://example.test/playlist-only")!, thumbnailURL: nil)
+    ytdlp.snapshot = LibrarySnapshot(
+      songs: [],
+      playlists: [
+        LibraryPlaylist(
+          id: "playlist", title: "Playlist", sourceURL: URL(string: "https://x/playlist")!,
+          addedAt: old, tracks: [track])
+      ])
+    await model.load(using: PlayerModel(ytdlp: ytdlp, audioEngine: FakeAudioEngine()))
+    model.selectedPlaylistID = "playlist"
+
+    #expect(model.selectedPlaylistSongs == [LibrarySong(track: track, addedAt: old)])
+  }
+
+  @Test func refreshesSnapshotAfterRemovingSong() async {
+    let model = LibraryModel()
     let ytdlp = FakeYtDlpClient()
     let song = librarySong("only", title: "Only", addedAt: old)
     ytdlp.snapshot = LibrarySnapshot(songs: [song], playlists: [])
@@ -90,6 +157,48 @@ private func librarySong(
 
     #expect(await model.removeSong(id: song.id, using: player))
     #expect(model.snapshot.songs.isEmpty)
+  }
+
+  @Test func leavesPlaylistSelectedWhenRemovalFails() async {
+    struct RemovalError: Error {}
+
+    let model = LibraryModel()
+    let ytdlp = FakeYtDlpClient()
+    ytdlp.removePlaylistError = RemovalError()
+    ytdlp.snapshot = LibrarySnapshot(
+      songs: [],
+      playlists: [
+        LibraryPlaylist(
+          id: "playlist", title: "Playlist", sourceURL: URL(string: "https://x/playlist")!,
+          addedAt: old, tracks: [])
+      ])
+    let player = PlayerModel(ytdlp: ytdlp, audioEngine: FakeAudioEngine())
+    await model.load(using: player)
+    model.selectedPlaylistID = "playlist"
+
+    #expect(await model.removePlaylist(id: "playlist", using: player) == false)
+    #expect(model.selectedPlaylistID == "playlist")
+    #expect(model.errorMessage == nil)
+    #expect(model.playlists.map(\.id) == ["playlist"])
+  }
+
+  @Test func clearsSelectionAndRefreshesSnapshotAfterRemovingPlaylist() async {
+    let model = LibraryModel()
+    let ytdlp = FakeYtDlpClient()
+    ytdlp.snapshot = LibrarySnapshot(
+      songs: [],
+      playlists: [
+        LibraryPlaylist(
+          id: "playlist", title: "Playlist", sourceURL: URL(string: "https://x/playlist")!,
+          addedAt: old, tracks: [])
+      ])
+    let player = PlayerModel(ytdlp: ytdlp, audioEngine: FakeAudioEngine())
+    await model.load(using: player)
+    model.selectedPlaylistID = "playlist"
+
+    #expect(await model.removePlaylist(id: "playlist", using: player))
+    #expect(model.selectedPlaylistID == nil)
+    #expect(model.snapshot.playlists.isEmpty)
   }
 
   private func populatedModel() async -> LibraryModel {
