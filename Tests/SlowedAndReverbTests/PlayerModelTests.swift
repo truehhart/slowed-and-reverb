@@ -128,6 +128,18 @@ private func makeTrack(_ id: String, title: String? = nil) -> Track {
 }
 
 @Suite struct AddTests {
+  @Test func reportsPersistedLibraryChangesImmediately() async {
+    let ytdlp = FakeYtDlpClient()
+    let player = PlayerModel(ytdlp: ytdlp, audioEngine: FakeAudioEngine())
+    ytdlp.resolveHandler = { _ in [makeTrack("aaaaaaaaaaa")] }
+
+    #expect(player.libraryRevision == 0)
+
+    await player.add(url: "https://youtu.be/aaaaaaaaaaa")
+
+    #expect(player.libraryRevision == 1)
+  }
+
   @Test func onlyStartsPlaybackWhenNothingIsSelectedYet() async {
     let ytdlp = FakeYtDlpClient()
     let engine = FakeAudioEngine()

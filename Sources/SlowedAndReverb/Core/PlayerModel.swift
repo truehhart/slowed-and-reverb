@@ -17,6 +17,7 @@ final class PlayerModel {
   private(set) var isDownloading = false
   /// Last user-facing error string (yt-dlp stderr etc.), nil when clear.
   private(set) var lastError: String?
+  private(set) var libraryRevision = 0
 
   var currentTrack: Track? {
     queue.indices.contains(index) ? queue[index] : nil
@@ -144,6 +145,7 @@ final class PlayerModel {
       setStatus(.failed)
       return
     }
+    libraryRevision += 1
     guard request == requestToken else { return }
     queue = resolved
     index = -1
@@ -182,6 +184,7 @@ final class PlayerModel {
       lastError = String(describing: error)
       return 0
     }
+    libraryRevision += 1
     guard request == requestToken else { return 0 }
     guard !tracks.isEmpty else { return 0 }
     let startFrom = queue.count
@@ -487,6 +490,7 @@ final class PlayerModel {
 
   private func refreshCachedTitle(url: String, id: String) async {
     guard let tracks = try? await ytdlp.resolve(url: url) else { return }
+    libraryRevision += 1
     guard let track = tracks.first(where: { $0.id == id }) ?? tracks.first else { return }
     guard queue.first?.id == id else { return }
     queue[0].title = track.title

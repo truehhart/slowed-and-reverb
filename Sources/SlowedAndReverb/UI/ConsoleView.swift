@@ -69,6 +69,10 @@ struct ConsoleView: View {
       guard tab == .library, !libraryModel.isLoading else { return }
       Task { await refreshLibrary() }
     }
+    .onChange(of: player.libraryRevision) { _, _ in
+      guard tab == .library else { return }
+      Task { await refreshLibrary() }
+    }
   }
 
   private func refreshLibrary() async {
