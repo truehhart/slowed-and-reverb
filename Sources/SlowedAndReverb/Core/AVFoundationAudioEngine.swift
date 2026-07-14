@@ -246,10 +246,7 @@ final class AVFoundationAudioEngine: AudioEngineProtocol {
   }
 
   func levels() -> (l: Float, r: Float) {
-    let (targetL, targetR) = levelMeterState.snapshot()
-    envL = ballistics(current: envL, target: targetL)
-    envR = ballistics(current: envR, target: targetR)
-    return (envL, envR)
+    levelMeterState.snapshot()
   }
 
   // MARK: - source lifecycle
@@ -340,13 +337,4 @@ final class AVFoundationAudioEngine: AudioEngineProtocol {
     }
   }
 
-  // MARK: - VU envelope (polled ~60fps by the UI via levels())
-
-  private var envL: Float = 0
-  private var envR: Float = 0
-
-  private func ballistics(current: Float, target: Float) -> Float {
-    let k: Float = target > current ? 0.5 : 0.1
-    return current + (target - current) * k
-  }
 }

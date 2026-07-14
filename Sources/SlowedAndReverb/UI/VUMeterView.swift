@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// L/R analog-style level meters: a finely graduated tick scale whose ticks
-/// light up with the kick-band level. 0 dBFS is the maximum (the rightmost
+/// light up with the visual signal level. 0 dBFS is the maximum (the rightmost
 /// tick); the ticks approaching it run red as a peak warning. Only the meter
 /// face refreshes on the render clock; labels and frame are static.
 struct VUMeterView: View {

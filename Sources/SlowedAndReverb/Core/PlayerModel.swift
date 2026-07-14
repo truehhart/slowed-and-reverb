@@ -370,8 +370,8 @@ final class PlayerModel {
 
   // MARK: VU metering
 
-  /// Per-channel level 0...1 with fast-attack/slow-release ballistics over a
-  /// kick-band (lowpass ~120 Hz) tap. Poll from the render loop (~60 fps).
+  /// Per-channel visual level 0...1 combining broadband RMS and peak values.
+  /// Poll from the render loop.
   func levels() -> (l: Float, r: Float) {
     audioEngine.levels()
   }
