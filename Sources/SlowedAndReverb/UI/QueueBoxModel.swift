@@ -13,7 +13,7 @@ final class QueueBoxModel {
   func submit(player: PlayerModel, status: StatusLine) async {
     guard !isSubmitting else { return }
     let url = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !url.isEmpty else { return }
+    guard URLParsing.looksLikeURL(url) else { return }
     isSubmitting = true
     status.show("adding…")
     defer { isSubmitting = false }

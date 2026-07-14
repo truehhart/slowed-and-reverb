@@ -52,8 +52,9 @@ struct ConsoleView: View {
     .consoleChassisBackground()
     .gesture(
       WindowDragGesture()
-        .simultaneously(with: TapGesture().onEnded { NSApp.keyWindow?.makeFirstResponder(nil) })
+        .simultaneously(with: TapGesture().onEnded { clearFocus() })
     )
+    .onExitCommand { clearFocus() }
     .overlay { vignette.allowsHitTesting(false) }
     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     .background(WindowConfigurator())
@@ -83,6 +84,10 @@ struct ConsoleView: View {
   private func refreshLibrary() async {
     await libraryModel.load(using: player)
     await preloadLibraryArtwork()
+  }
+
+  private func clearFocus() {
+    NSApp.keyWindow?.makeFirstResponder(nil)
   }
 
   private func preloadLibraryArtwork() async {
