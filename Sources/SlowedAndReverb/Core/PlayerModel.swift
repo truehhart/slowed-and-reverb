@@ -209,14 +209,17 @@ final class PlayerModel {
     requestToken += 1
     playToken += 1
     let token = playToken
+    let track = queue[i]
+    index = i
+    downloadProgress = nil
+    stopPositionTicking()
+    currentTime = 0
+    duration = 0
+    updateNowPlayingPosition()
     // Stop the outgoing track now, before any download/decode: otherwise it
     // keeps playing under the new track's UI state, and its onEnded could
     // even auto-advance past the user's selection.
     await audioEngine.stop()
-    duration = 0
-    let track = queue[i]
-    index = i
-    downloadProgress = nil
 
     let path: URL
     if let cached = pathCache[track.id] {

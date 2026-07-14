@@ -14,7 +14,7 @@ struct LibrarySongCard: View {
     ) {
       VStack(alignment: .leading, spacing: 0) {
         LibraryArtwork(track: song.track)
-          .frame(width: 160, height: 142)
+          .frame(width: 220, height: 220)
           .overlay(alignment: .bottomTrailing) {
             if let duration = song.track.duration {
               Text(TimeFormat.clock(duration))

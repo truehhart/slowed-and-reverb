@@ -117,11 +117,7 @@ struct TransportDeck: View {
   }
 
   private var statusText: String {
-    var parts = [stateTitle]
-    if let message = statusLine.message {
-      parts.append(message)
-    }
-    return parts.joined(separator: " · ")
+    statusLine.message ?? stateTitle
   }
 
   private var stateTitle: String {

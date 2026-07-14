@@ -15,7 +15,7 @@ struct LibraryCardSurface<Content: View, Actions: View>: View {
     ZStack(alignment: .topTrailing) {
       Button(action: action) {
         content()
-          .frame(width: 160, alignment: .leading)
+          .frame(width: 220, alignment: .leading)
           .background(cardBackground)
           .clipShape(cardShape)
           .overlay(

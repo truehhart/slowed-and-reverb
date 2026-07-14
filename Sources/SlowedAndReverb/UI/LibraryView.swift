@@ -11,7 +11,6 @@ struct LibraryView: View {
       VStack(spacing: 10) {
         if let playlist = model.selectedPlaylist {
           playlistHeader(playlist)
-          LibrarySearchField(placeholder: "Search this playlist", text: $model.query)
         } else {
           controls
         }
@@ -35,17 +34,17 @@ struct LibraryView: View {
           .font(Theme.mono(8.5))
           .foregroundStyle(Theme.labelDim)
       }
-      Spacer()
+      LibrarySearchField(placeholder: "Search this playlist", text: $model.query)
       LibraryHeaderActionButton("Play All", systemImage: "play.fill") {
         Task {
           await player.playLibraryTracks(playlist.tracks)
-          statusLine.show("Playing \(playlist.title)")
+          statusLine.clear()
         }
       }
       .disabled(playlist.tracks.isEmpty)
-      LibraryHeaderActionButton("Add All", systemImage: "text.badge.plus") {
+      LibraryHeaderActionButton("Queue All", systemImage: "text.badge.plus") {
         player.addLibraryTracks(playlist.tracks)
-        statusLine.show("Added \(playlist.tracks.count) songs to queue")
+        statusLine.flash("Queued \(playlist.tracks.count) songs")
       }
       .disabled(playlist.tracks.isEmpty)
       HoldToDeleteButton(
@@ -121,7 +120,7 @@ struct LibraryView: View {
         queueAction: { addToQueue(song) },
         removeAction: { remove(song) })
     }
-    .frame(height: 220)
+    .frame(height: 290)
     .frame(maxHeight: .infinity, alignment: .top)
   }
 
@@ -132,7 +131,7 @@ struct LibraryView: View {
         model.query = ""
       }
     }
-    .frame(height: 220)
+    .frame(height: 290)
     .frame(maxHeight: .infinity, alignment: .top)
   }
 
@@ -144,7 +143,7 @@ struct LibraryView: View {
         queueAction: { addToQueue(song) },
         removeAction: nil)
     }
-    .frame(height: 220)
+    .frame(height: 290)
     .frame(maxHeight: .infinity, alignment: .top)
   }
 
@@ -155,26 +154,34 @@ struct LibraryView: View {
   private func play(_ song: LibrarySong) {
     Task {
       await player.playLibraryTracks([song.track])
-      statusLine.show("Playing \(song.track.title)")
+      statusLine.clear()
     }
   }
 
   private func addToQueue(_ song: LibrarySong) {
     player.addLibraryTracks([song.track])
-    statusLine.show("Added \(song.track.title) to queue")
+    statusLine.flash("Added \(song.track.title) to queue")
   }
 
   private func remove(_ song: LibrarySong) {
     Task {
       let removed = await model.removeSong(id: song.id, using: player)
-      statusLine.show(removed ? "Removed \(song.track.title)" : "Could not remove song")
+      if removed {
+        statusLine.flash("Removed \(song.track.title)")
+      } else {
+        statusLine.show("Could not remove song", isError: true)
+      }
     }
   }
 
   private func remove(_ playlist: LibraryPlaylist) {
     Task {
       let removed = await model.removePlaylist(id: playlist.id, using: player)
-      statusLine.show(removed ? "Removed \(playlist.title)" : "Could not remove playlist")
+      if removed {
+        statusLine.flash("Removed \(playlist.title)")
+      } else {
+        statusLine.show("Could not remove playlist", isError: true)
+      }
     }
   }
 

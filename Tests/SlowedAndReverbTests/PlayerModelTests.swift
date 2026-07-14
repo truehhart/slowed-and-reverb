@@ -112,6 +112,30 @@ private func makeTrack(_ id: String, title: String? = nil) -> Track {
     #expect(!ids.contains("ddddddddddd"))
   }
 
+  @Test func resetsPositionAsSoonAsANewTrackStartsLoading() async {
+    let ytdlp = FakeYtDlpClient()
+    let engine = FakeAudioEngine()
+    let player = PlayerModel(ytdlp: ytdlp, audioEngine: engine)
+    let tracks = ["aaaaaaaaaaa", "bbbbbbbbbbb"].map { makeTrack($0) }
+    ytdlp.resolveHandler = { _ in tracks }
+
+    await player.load(url: "https://youtube.com/playlist?list=demo")
+    engine.currentTime = engine.duration
+    await waitUntil(player.currentTime == engine.duration)
+    let stopGate = Deferred<Void>()
+    engine.stopHandler = { _ = try? await stopGate.value }
+
+    let playTask = Task { await player.playIndex(1) }
+    await waitUntil(engine.stopCallCount == 2)
+
+    #expect(player.currentTrack?.id == "bbbbbbbbbbb")
+    #expect(player.currentTime == 0)
+    #expect(player.duration == 0)
+
+    stopGate.resolve(())
+    await playTask.value
+  }
+
   @Test func skipsFailedTracksAndDeclaresTheQueueDeadOnceEveryTrackFails() async {
     let ytdlp = FakeYtDlpClient()
     let engine = FakeAudioEngine()

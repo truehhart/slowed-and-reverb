@@ -23,6 +23,7 @@ final class FakeAudioEngine: AudioEngineProtocol {
   /// Test knobs.
   var playError: Error?
   var restartSucceeds = true
+  var stopHandler: (() async -> Void)?
   var playedURLs: [URL] = []
   var stopCallCount = 0
   var restartCallCount = 0
@@ -41,6 +42,7 @@ final class FakeAudioEngine: AudioEngineProtocol {
 
   func stop() async {
     stopCallCount += 1
+    await stopHandler?()
     hasSource = false
     paused = false
   }

@@ -12,7 +12,7 @@ struct LibraryPlaylistCard: View {
     ) {
       VStack(alignment: .leading, spacing: 0) {
         LibraryArtwork(track: playlist.tracks.first)
-          .frame(width: 160, height: 142)
+          .frame(width: 220, height: 220)
           .overlay(alignment: .bottomLeading) {
             Text(songCount)
               .font(Theme.mono(9, bold: true))

@@ -6,7 +6,7 @@ struct LibraryCarousel<Item: Identifiable, Content: View>: View {
 
   @State private var leadingItemID: Item.ID?
 
-  private let cardWidth: CGFloat = 160
+  private let cardWidth: CGFloat = 220
   private let spacing: CGFloat = 12
 
   var body: some View {
