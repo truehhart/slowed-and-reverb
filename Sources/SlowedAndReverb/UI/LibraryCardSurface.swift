@@ -12,28 +12,39 @@ struct LibraryCardSurface<Content: View, Actions: View>: View {
   @FocusState private var focused: Bool
 
   var body: some View {
-    ZStack(alignment: .topTrailing) {
-      Button(action: action) {
-        content()
-          .frame(width: 220, alignment: .leading)
-          .background(cardBackground)
-          .clipShape(cardShape)
-          .overlay(
-            cardShape.strokeBorder(
-              hovering || focused ? Theme.accentRingStrong : Theme.line,
-              lineWidth: focused ? 2 : 1)
-          )
-      }
-      .buttonStyle(CardButtonStyle())
+    cardWithActions
+      .contentShape(cardShape)
+      .onTapGesture(perform: action)
+      .focusable()
       .focused($focused)
+      .onKeyPress(.return, action: handleReturn)
       .help(help)
+      .accessibilityElement(children: .contain)
       .accessibilityLabel(accessibilityLabel)
+      .accessibilityAddTraits(.isButton)
+      .accessibilityAction { action() }
+      .onHover { hovering = $0 && isEnabled }
+      .animation(.easeOut(duration: 0.14), value: focused)
+  }
 
-      actions()
-        .padding(7)
-    }
-    .onHover { hovering = $0 && isEnabled }
-    .animation(.easeOut(duration: 0.14), value: focused)
+  private var cardWithActions: some View {
+    cardChrome
+      .overlay(alignment: .topTrailing) {
+        actions()
+          .padding(7)
+      }
+  }
+
+  private var cardChrome: some View {
+    content()
+      .frame(width: 220, alignment: .leading)
+      .background(cardBackground)
+      .clipShape(cardShape)
+      .overlay {
+        cardShape.strokeBorder(
+          hovering || focused ? Theme.accentRingStrong : Theme.line,
+          lineWidth: focused ? 2 : 1)
+      }
   }
 
   private var cardShape: RoundedRectangle {
@@ -46,18 +57,9 @@ struct LibraryCardSurface<Content: View, Actions: View>: View {
     )
   }
 
-  private struct CardButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-      configuration.label
-        .scaleEffect(configuration.isPressed ? 0.98 : 1)
-        .brightness(configuration.isPressed ? -0.06 : 0)
-        .offset(y: configuration.isPressed ? 1 : 0)
-        .overlay {
-          RoundedRectangle(cornerRadius: Theme.radiusMD, style: .continuous)
-            .strokeBorder(Theme.burgundy, lineWidth: 2)
-            .opacity(configuration.isPressed ? 0.72 : 0)
-        }
-        .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
-    }
+  private func handleReturn() -> KeyPress.Result {
+    action()
+    return .handled
   }
+
 }
