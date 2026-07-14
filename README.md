@@ -21,6 +21,10 @@ A native macOS app that plays YouTube audio **slowed down and with reverb**. Pas
 - **Smart caching** — downloaded audio is cached for instant replays.
 - **Self-contained** — `yt-dlp` ships inside the app; nothing else to install.
 
+## Demo
+
+<p align="center"><img src="public/demo.webp" alt="slowed + reverb demo" width="640" /></p>
+
 ## Install
 
 macOS on Apple Silicon (arm64) only.
