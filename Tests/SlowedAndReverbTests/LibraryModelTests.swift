@@ -17,6 +17,19 @@ private func librarySong(
   private let old = Date(timeIntervalSince1970: 100)
   private let recent = Date(timeIntervalSince1970: 200)
 
+  @Test func staysInInitialLoadingStateUntilTheFirstSnapshotArrives() async {
+    let model = LibraryModel()
+
+    #expect(model.isLoading)
+    #expect(!model.hasLoaded)
+
+    await model.load(
+      using: PlayerModel(ytdlp: FakeYtDlpClient(), audioEngine: FakeAudioEngine()))
+
+    #expect(!model.isLoading)
+    #expect(model.hasLoaded)
+  }
+
   @Test func searchIgnoresCaseAndDiacriticsAcrossTitleAndArtist() async {
     let model = await populatedModel()
 

@@ -14,6 +14,7 @@ struct ConsoleView: View {
   @State private var tab: Tab = .player
   @State private var statusLine = StatusLine()
   @State private var queueBox = QueueBoxModel()
+  @State private var libraryModel = LibraryModel()
   @State private var keyMonitor: KeyEventMonitor?
 
   var body: some View {
@@ -34,7 +35,7 @@ struct ConsoleView: View {
         case .settings:
           centered { SettingsView(statusLine: statusLine) }
         case .library:
-          LibraryView(statusLine: statusLine)
+          LibraryView(model: libraryModel, statusLine: statusLine)
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -52,6 +53,7 @@ struct ConsoleView: View {
     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     .background(WindowConfigurator())
     .environment(\.colorScheme, .dark)
+    .task { await refreshLibrary() }
     .onAppear {
       guard keyMonitor == nil else { return }
       keyMonitor = KeyEventMonitor(player: player, queueBox: queueBox, statusLine: statusLine)
@@ -62,6 +64,34 @@ struct ConsoleView: View {
     }
     .onChange(of: updater.statusText) { _, text in
       if let text { statusLine.show(text) }
+    }
+    .onChange(of: tab) { _, tab in
+      guard tab == .library, !libraryModel.isLoading else { return }
+      Task { await refreshLibrary() }
+    }
+  }
+
+  private func refreshLibrary() async {
+    await libraryModel.load(using: player)
+    await preloadLibraryArtwork()
+  }
+
+  private func preloadLibraryArtwork() async {
+    let tracks: [Track]
+    if libraryModel.selectedPlaylist != nil {
+      tracks = libraryModel.selectedPlaylistSongs.prefix(6).map(\.track)
+    } else if libraryModel.section == .songs {
+      tracks = libraryModel.songs.prefix(6).map(\.track)
+    } else {
+      tracks = libraryModel.playlists.prefix(6).compactMap { $0.tracks.first }
+    }
+
+    await withTaskGroup(of: Void.self) { group in
+      for track in tracks {
+        group.addTask {
+          _ = await LibraryArtworkCache.shared.load(track, using: player)
+        }
+      }
     }
   }
 

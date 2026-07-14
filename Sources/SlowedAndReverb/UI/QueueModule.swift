@@ -13,7 +13,11 @@ struct QueueModule: View {
     @Bindable var queueBox = queueBox
     return ModuleBox("up next") {
       HStack(spacing: 6) {
-        ClearHoldButton(enabled: !player.queue.isEmpty) {
+        HoldToDeleteButton(
+          enabled: !player.queue.isEmpty,
+          accessibilityLabel: "Clear queue",
+          help: "Hold to clear the queue"
+        ) {
           Task { await player.clear() }
         }
         ImportButton(disabled: queueBox.isSubmitting) {
@@ -264,84 +268,5 @@ private struct ImportButtonStyle: ButtonStyle {
       .opacity(disabled ? 0.5 : 1)
       .scaleEffect(configuration.isPressed ? 0.96 : 1)
       .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
-  }
-}
-
-/// Hold-to-clear: press and hold ~600ms to wipe the queue; releasing early
-/// cancels. A red wipe sweeps across while arming.
-private struct ClearHoldButton: View {
-  let enabled: Bool
-  let action: () -> Void
-
-  @State private var arming = false
-  @State private var fill: CGFloat = 0
-  @State private var hovering = false
-  @State private var holdTask: Task<Void, Never>?
-
-  private let holdDuration: TimeInterval = 0.6
-
-  var body: some View {
-    IconView(glyph: .trash, size: 15)
-      .foregroundStyle(hovering || arming ? Theme.error : Theme.labelDim)
-      .padding(6)
-      .background {
-        GeometryReader { proxy in
-          RoundedRectangle(cornerRadius: 7, style: .continuous)
-            .fill(
-              LinearGradient(
-                colors: [Theme.error.opacity(0.26), Theme.error.opacity(0.12)],
-                startPoint: .leading, endPoint: .trailing)
-            )
-            .overlay {
-              RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(Theme.accentRingStrong, lineWidth: 1)
-            }
-            .frame(width: proxy.size.width * fill, alignment: .leading)
-            .animation(.linear(duration: 0.08), value: fill)
-        }
-      }
-      .overlay {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
-          .strokeBorder(
-            hovering || arming ? Theme.accentRingStrong : Theme.lineSoft, lineWidth: 1)
-      }
-      .opacity(enabled ? 1 : 0.35)
-      .contentShape(Rectangle())
-      .onHover { hovering = enabled && $0 }
-      .gesture(
-        DragGesture(minimumDistance: 0)
-          .onChanged { _ in
-            guard enabled, holdTask == nil else { return }
-            arming = true
-            holdTask = Task {
-              let steps = 24
-              for step in 1...steps {
-                try? await Task.sleep(for: .seconds(holdDuration / Double(steps)))
-                guard !Task.isCancelled else { return }
-                fill = CGFloat(step) / CGFloat(steps)
-              }
-              action()
-              reset()
-            }
-          }
-          .onEnded { _ in reset() }
-      )
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel("Clear queue")
-      .accessibilityHint("Press and hold to clear the queue")
-      .accessibilityAddTraits(.isButton)
-      .accessibilityAction {
-        guard enabled else { return }
-        action()
-      }
-      .onDisappear { reset() }
-      .help("hold to clear the queue")
-  }
-
-  private func reset() {
-    holdTask?.cancel()
-    holdTask = nil
-    arming = false
-    fill = 0
   }
 }

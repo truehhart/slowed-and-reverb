@@ -53,11 +53,12 @@ struct LibrarySongCard: View {
         .help("Add to queue")
 
         if let removeAction {
-          Button(role: .destructive, action: removeAction) {
-            Label("Remove \(song.track.title)", systemImage: "trash")
-              .labelStyle(.iconOnly)
+          HoldToDeleteButton(
+            accessibilityLabel: "Remove \(song.track.title)",
+            help: "Hold to remove from library"
+          ) {
+            removeAction()
           }
-          .help("Remove from library")
         }
       }
       .buttonStyle(.bordered)

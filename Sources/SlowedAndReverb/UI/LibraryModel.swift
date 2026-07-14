@@ -21,7 +21,8 @@ final class LibraryModel {
   }
 
   private(set) var snapshot = LibrarySnapshot.empty
-  private(set) var isLoading = false
+  private(set) var isLoading = true
+  private(set) var hasLoaded = false
   private(set) var errorMessage: String?
   var section = Section.songs
   var query = ""
@@ -107,6 +108,7 @@ final class LibraryModel {
     errorMessage = nil
     snapshot = await player.librarySnapshot()
     if selectedPlaylistID != nil, selectedPlaylist == nil { selectedPlaylistID = nil }
+    hasLoaded = true
     isLoading = false
   }
 

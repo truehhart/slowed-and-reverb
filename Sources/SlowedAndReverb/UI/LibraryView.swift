@@ -2,9 +2,7 @@ import SwiftUI
 
 struct LibraryView: View {
   @Environment(PlayerModel.self) private var player
-  @State private var model = LibraryModel()
-  @State private var songToRemove: LibrarySong?
-  @State private var playlistToRemove: LibraryPlaylist?
+  @Bindable var model: LibraryModel
 
   let statusLine: StatusLine
 
@@ -19,41 +17,6 @@ struct LibraryView: View {
         }
         content
       }
-    }
-    .task { await model.load(using: player) }
-    .confirmationDialog(
-      "Remove \(songToRemove?.track.title ?? "song")?",
-      isPresented: Binding(
-        get: { songToRemove != nil }, set: { if !$0 { songToRemove = nil } }),
-      titleVisibility: .visible
-    ) {
-      Button("Remove Song", role: .destructive) {
-        guard let song = songToRemove else { return }
-        Task {
-          let removed = await model.removeSong(id: song.id, using: player)
-          statusLine.show(removed ? "Removed \(song.track.title)" : "Could not remove song")
-          songToRemove = nil
-        }
-      }
-    } message: {
-      Text("Downloaded audio and artwork will be permanently deleted.")
-    }
-    .confirmationDialog(
-      "Remove \(playlistToRemove?.title ?? "playlist")?",
-      isPresented: Binding(
-        get: { playlistToRemove != nil }, set: { if !$0 { playlistToRemove = nil } }),
-      titleVisibility: .visible
-    ) {
-      Button("Remove Playlist", role: .destructive) {
-        guard let playlist = playlistToRemove else { return }
-        Task {
-          let removed = await model.removePlaylist(id: playlist.id, using: player)
-          statusLine.show(removed ? "Removed \(playlist.title)" : "Could not remove playlist")
-          playlistToRemove = nil
-        }
-      }
-    } message: {
-      Text("Songs and downloaded files will remain in your library.")
     }
   }
 
@@ -85,10 +48,12 @@ struct LibraryView: View {
         statusLine.show("Added \(playlist.tracks.count) songs to queue")
       }
       .disabled(playlist.tracks.isEmpty)
-      LibraryHeaderActionButton(
-        "Remove", systemImage: "trash", isDestructive: true
+      HoldToDeleteButton(
+        "Remove",
+        accessibilityLabel: "Remove \(playlist.title)",
+        help: "Hold to remove playlist"
       ) {
-        playlistToRemove = playlist
+        remove(playlist)
       }
     }
   }
@@ -110,7 +75,7 @@ struct LibraryView: View {
   }
 
   @ViewBuilder private var content: some View {
-    if model.isLoading {
+    if model.isLoading && !model.hasLoaded {
       stateMessage("Loading library", detail: "Reading your saved music.", icon: "waveform")
     } else if let error = model.errorMessage {
       stateMessage("Library unavailable", detail: error, icon: "exclamationmark.triangle")
@@ -150,7 +115,7 @@ struct LibraryView: View {
         song: song,
         playAction: { play(song) },
         queueAction: { addToQueue(song) },
-        removeAction: { songToRemove = song })
+        removeAction: { remove(song) })
     }
     .frame(height: 220)
     .frame(maxHeight: .infinity, alignment: .top)
@@ -197,6 +162,20 @@ struct LibraryView: View {
     statusLine.show("Added \(song.track.title) to queue")
   }
 
+  private func remove(_ song: LibrarySong) {
+    Task {
+      let removed = await model.removeSong(id: song.id, using: player)
+      statusLine.show(removed ? "Removed \(song.track.title)" : "Could not remove song")
+    }
+  }
+
+  private func remove(_ playlist: LibraryPlaylist) {
+    Task {
+      let removed = await model.removePlaylist(id: playlist.id, using: player)
+      statusLine.show(removed ? "Removed \(playlist.title)" : "Could not remove playlist")
+    }
+  }
+
   private func stateMessage(
     _ title: String, detail: String, icon: String = "magnifyingglass"
   ) -> some View {
@@ -218,7 +197,7 @@ struct LibraryView: View {
   }
 
   private var searchPlaceholder: String {
-    model.section == .songs ? "Search songs or artists" : "Search playlists"
+    return "Search"
   }
 
   private var sortOptions: [String] {

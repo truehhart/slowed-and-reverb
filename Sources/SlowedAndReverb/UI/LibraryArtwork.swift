@@ -1,21 +1,21 @@
+import AppKit
 import SwiftUI
 
 struct LibraryArtwork: View {
   @Environment(PlayerModel.self) private var player
-  @State private var artworkURL: URL?
+  @State private var image: NSImage?
+  @State private var imageTrackID: String?
 
   let track: Track?
 
   var body: some View {
     ZStack {
       fallback
-      if let artworkURL {
-        AsyncImage(url: artworkURL, transaction: Transaction(animation: .easeOut(duration: 0.2))) {
-          phase in
-          if let image = phase.image {
-            image.resizable().scaledToFill()
-          }
-        }
+      if let displayedImage {
+        Image(nsImage: displayedImage)
+          .resizable()
+          .scaledToFill()
+          .transition(.opacity)
       }
       GrainTexture.tile.resizable(resizingMode: .tile)
         .opacity(0.09)
@@ -23,13 +23,33 @@ struct LibraryArtwork: View {
     }
     .clipped()
     .task(id: track?.id) {
-      artworkURL = nil
-      guard let track else { return }
-      let resolvedURL = await player.artworkURL(for: track)
+      guard let track else {
+        image = nil
+        imageTrackID = nil
+        return
+      }
+      if let cached = LibraryArtworkCache.shared.image(for: track.id) {
+        image = cached
+        imageTrackID = track.id
+        return
+      }
+      image = nil
+      imageTrackID = nil
+      guard let loadedImage = await LibraryArtworkCache.shared.load(track, using: player) else {
+        return
+      }
       guard !Task.isCancelled else { return }
-      artworkURL = resolvedURL
+      image = loadedImage
+      imageTrackID = track.id
     }
+    .animation(.easeOut(duration: 0.2), value: imageTrackID)
     .accessibilityHidden(true)
+  }
+
+  private var displayedImage: NSImage? {
+    guard let track else { return nil }
+    if imageTrackID == track.id { return image }
+    return LibraryArtworkCache.shared.image(for: track.id)
   }
 
   private var fallback: some View {

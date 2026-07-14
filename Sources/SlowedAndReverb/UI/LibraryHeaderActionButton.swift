@@ -3,7 +3,6 @@ import SwiftUI
 struct LibraryHeaderActionButton: View {
   let title: String
   let systemImage: String
-  let isDestructive: Bool
   let action: () -> Void
 
   @Environment(\.isEnabled) private var isEnabled
@@ -11,17 +10,15 @@ struct LibraryHeaderActionButton: View {
   @FocusState private var focused: Bool
 
   init(
-    _ title: String, systemImage: String, isDestructive: Bool = false,
-    action: @escaping () -> Void
+    _ title: String, systemImage: String, action: @escaping () -> Void
   ) {
     self.title = title
     self.systemImage = systemImage
-    self.isDestructive = isDestructive
     self.action = action
   }
 
   var body: some View {
-    Button(role: isDestructive ? .destructive : nil, action: action) {
+    Button(action: action) {
       Label(title, systemImage: systemImage)
         .font(Theme.archivo(10, .semiBold))
         .foregroundStyle(foregroundColor)
@@ -50,7 +47,6 @@ struct LibraryHeaderActionButton: View {
 
   private var foregroundColor: Color {
     if !isEnabled { return Theme.labelDim }
-    if isDestructive { return Theme.error }
     return hovering || focused ? Theme.ivory : Theme.etch
   }
 }
