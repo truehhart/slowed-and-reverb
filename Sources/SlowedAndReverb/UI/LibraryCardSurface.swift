@@ -16,9 +16,9 @@ struct LibraryCardSurface<Content: View, Actions: View>: View {
       .contentShape(cardShape)
       .onTapGesture(perform: action)
       .focusable()
+      .focusEffectDisabled()
       .focused($focused)
       .onKeyPress(.return, action: handleReturn)
-      .help(help)
       .accessibilityElement(children: .contain)
       .accessibilityLabel(accessibilityLabel)
       .accessibilityAddTraits(.isButton)
@@ -29,6 +29,7 @@ struct LibraryCardSurface<Content: View, Actions: View>: View {
 
   private var cardWithActions: some View {
     cardChrome
+      .help(help)
       .overlay(alignment: .topTrailing) {
         actions()
           .padding(7)

@@ -6,6 +6,8 @@ struct LibrarySongCard: View {
   let queueAction: () -> Void
   let removeAction: (() -> Void)?
 
+  @State private var queueButtonHovering = false
+
   var body: some View {
     LibraryCardSurface(
       accessibilityLabel: accessibilityLabel,
@@ -42,9 +44,22 @@ struct LibrarySongCard: View {
     } actions: {
       HStack(spacing: 5) {
         Button(action: queueAction) {
-          Label("Add \(song.track.title) to queue", systemImage: "text.badge.plus")
-            .labelStyle(.iconOnly)
+          Image(systemName: "text.badge.plus")
+            .font(.system(size: 15, weight: .regular))
+            .foregroundStyle(queueButtonHovering ? Theme.ivory : Theme.labelDim)
+            .frame(width: 15, height: 15)
+            .padding(.horizontal, 6)
+            .frame(height: 27)
+            .background(.clear)
+            .overlay {
+              actionButtonShape.strokeBorder(
+                queueButtonHovering ? Theme.accentRingStrong : Theme.lineSoft, lineWidth: 1)
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .onHover { queueButtonHovering = $0 }
+        .accessibilityLabel("Add \(song.track.title) to queue")
         .help("Add to queue")
 
         if let removeAction {
@@ -56,9 +71,21 @@ struct LibrarySongCard: View {
           }
         }
       }
-      .buttonStyle(.bordered)
-      .controlSize(.mini)
+      .padding(4)
+      .background(Theme.ink.opacity(0.82), in: actionTrayShape)
+      .overlay {
+        actionTrayShape.strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
+      }
+      .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
     }
+  }
+
+  private var actionTrayShape: RoundedRectangle {
+    RoundedRectangle(cornerRadius: 9, style: .continuous)
+  }
+
+  private var actionButtonShape: RoundedRectangle {
+    RoundedRectangle(cornerRadius: 7, style: .continuous)
   }
 
   private var accessibilityLabel: String {
