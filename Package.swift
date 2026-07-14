@@ -25,6 +25,7 @@ let package = Package(
             name: "SlowedAndReverbTests",
             dependencies: ["SlowedAndReverb"],
             path: "Tests/SlowedAndReverbTests",
+            exclude: ["Fixtures"],
             swiftSettings: [
                 .defaultIsolation(MainActor.self)
             ]

@@ -117,6 +117,29 @@ private func canonical(_ url: URL) -> URL {
   }
 }
 
+@Suite struct PlaylistMetadataEnrichmentTests {
+  @Test func resolvesFullMetadataAndPreservesPlaylistOrder() async throws {
+    let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+      .appendingPathComponent("Fixtures/fake-ytdlp.nu")
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "ytdlp-enrichment-test-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let client = YtDlpClient(
+      binaryURL: fixture, cacheDir: root.appendingPathComponent("cache"),
+      libraryURL: root.appendingPathComponent("Library.store"))
+
+    let tracks = try await client.resolve(url: "https://example.test/playlist")
+
+    #expect(tracks.map(\.id) == ["aaaaaaaaaaa", "bbbbbbbbbbb"])
+    #expect(tracks.map(\.title) == ["One", "Two"])
+    #expect(tracks.map(\.artist) == ["Artist A", "Artist B"])
+    #expect(tracks.map(\.duration) == [123, 234])
+    let playlist = await client.librarySnapshot().playlists.first
+    #expect(playlist?.tracks.map(\.artist) == ["Artist A", "Artist B"])
+  }
+}
+
 @Suite struct CacheScanAndMetaRoundTripTests {
   @Test func findsCachedAudioAndRoundTripsTitleMetadata() async throws {
     let unresolved = FileManager.default.temporaryDirectory.appendingPathComponent(

@@ -9,6 +9,7 @@ actor YtDlpClient: YtDlpClientProtocol {
   // a bare `bestaudio` often returns Opus-in-WebM.
   private nonisolated static let audioFormat =
     "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=mp3]/bestaudio"
+  private nonisolated static let playlistMetadataConcurrency = 4
 
   private enum Binary {
     case bundled(URL)
@@ -138,7 +139,8 @@ actor YtDlpClient: YtDlpClientProtocol {
     }
     // A playlist carries `entries`; a single video is its own lone entry.
     let entries = root.entries.map { $0.compactMap(\.value) } ?? [root]
-    let tracks = entries.compactMap(Self.parseTrack)
+    let flatTracks = entries.compactMap(Self.parseTrack)
+    let tracks = root.entries == nil ? flatTracks : await enrichPlaylistTracks(flatTracks)
     guard !tracks.isEmpty else { throw YtDlpError.noPlayableTracks }
     let sourceURL = URL(string: url)
     if root.entries != nil, let playlistID = root.id, !playlistID.isEmpty,
@@ -150,6 +152,62 @@ actor YtDlpClient: YtDlpClientProtocol {
       persistMetadata(for: tracks, sourceURL: sourceURL)
     }
     return tracks
+  }
+
+  private func enrichPlaylistTracks(_ tracks: [Track]) async -> [Track] {
+    guard !tracks.isEmpty else { return [] }
+    var enriched = tracks
+    let limit = min(Self.playlistMetadataConcurrency, tracks.count)
+
+    await withTaskGroup(of: (Int, Track).self) { group in
+      var nextIndex = 0
+      for _ in 0..<limit {
+        let index = nextIndex
+        nextIndex += 1
+        group.addTask { [self] in
+          (index, await enrichPlaylistTrack(tracks[index]))
+        }
+      }
+
+      for await (index, track) in group {
+        enriched[index] = track
+        guard nextIndex < tracks.count else { continue }
+        let pendingIndex = nextIndex
+        nextIndex += 1
+        group.addTask { [self] in
+          (pendingIndex, await enrichPlaylistTrack(tracks[pendingIndex]))
+        }
+      }
+    }
+    return enriched
+  }
+
+  private func enrichPlaylistTrack(_ fallback: Track) async -> Track {
+    do {
+      let result = try await run(args: [
+        "-J", "--no-playlist", "--no-warnings", fallback.webpageURL.absoluteString,
+      ])
+      guard result.status == 0 else {
+        let error = String(decoding: result.stderr, as: UTF8.self).trimmingCharacters(
+          in: .whitespacesAndNewlines)
+        Log.ytdlp.error(
+          "metadata enrichment failed for \(fallback.id, privacy: .public): \(error, privacy: .public)"
+        )
+        return fallback
+      }
+      guard let entry = try? JSONDecoder().decode(RawEntry.self, from: result.stdout),
+        let track = Self.parseTrack(entry), track.id == fallback.id
+      else {
+        Log.ytdlp.error("invalid metadata response for \(fallback.id, privacy: .public)")
+        return fallback
+      }
+      return Self.merging(track, fallback: fallback)
+    } catch {
+      Log.ytdlp.error(
+        "metadata enrichment failed for \(fallback.id, privacy: .public): \(error, privacy: .public)"
+      )
+      return fallback
+    }
   }
 
   /// The subset of yt-dlp's `-J` schema we consume. `entries` is present for
@@ -251,6 +309,14 @@ actor YtDlpClient: YtDlpClientProtocol {
       }
     }
     return title
+  }
+
+  private nonisolated static func merging(_ enriched: Track, fallback: Track) -> Track {
+    Track(
+      id: fallback.id, title: enriched.title, artist: enriched.artist ?? fallback.artist,
+      webpageURL: enriched.webpageURL,
+      thumbnailURL: enriched.thumbnailURL ?? fallback.thumbnailURL,
+      duration: enriched.duration ?? fallback.duration)
   }
 
   private nonisolated static func cleanedArtist(_ candidate: String?) -> String? {
